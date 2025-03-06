@@ -60,6 +60,12 @@ message AnalyzePackageCommand {
   int64 timestamp = 3;
 }
 
+message AnalyzeModuleCommand {
+  string module_id = 1;
+  string project_id = 2;
+  int64 timestamp = 3;
+}
+
 message Module {
   string name = 1;
   string location = 2;

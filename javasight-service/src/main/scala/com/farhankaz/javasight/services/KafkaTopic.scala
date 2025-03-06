@@ -12,6 +12,7 @@ object KafkaTopics {
   case object ScanModuleFileCommands extends KafkaTopic { override def toString = "scan_module_file_commands" }
   case object AnalyzeFileCommands extends KafkaTopic { override def toString = "analyze_file_commands" }
   case object AnalyzePackageCommands extends KafkaTopic { override def toString = "analyze_package_commands" }
+  case object AnalyzeModuleCommands extends KafkaTopic { override def toString = "analyze_module_commands" }
 
 
   // events

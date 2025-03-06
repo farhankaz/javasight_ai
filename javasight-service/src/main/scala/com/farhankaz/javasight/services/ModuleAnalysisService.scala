@@ -18,6 +18,7 @@ import java.nio.file.{Files, Paths}
 import scala.jdk.CollectionConverters._
 import com.farhankaz.javasight.utils.{ConfigurationLoader, RedissonLock}
 import com.farhankaz.javasight.model.protobuf.{ImportModule, ImportFile}
+import com.farhankaz.javasight.model.kafka.AnalyzeModuleCommand
 import io.micrometer.core.instrument.{MeterRegistry, Tags}
 import org.bson.types.ObjectId
 import akka.kafka.ProducerMessage
@@ -47,11 +48,17 @@ class ModuleAnalysisService(
     ollama: CodeAnalyzer
 )(implicit system: ActorSystem, ec: ExecutionContext)
     extends BaseKafkaService(
-      KafkaTopics.PackageAnalyzedEvents,
-      config,
-      metricsRegistry,
-      database
-    ) {
+        KafkaTopics.PackageAnalyzedEvents,
+        config,
+        metricsRegistry,
+        database
+      ) {
+    
+    // Add a counter for direct module analysis requests
+    private val directModuleAnalysisRequests = metricsRegistry.counter(
+      "javasight_direct_module_analysis_requests_total",
+      Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env)
+    )
 
   private val http = Http()
   private val modulesAnalyzed = metricsRegistry.counter(
@@ -71,7 +78,104 @@ class ModuleAnalysisService(
     .withKeepAliveTimeout(25.minutes)
     .withMaxRetries(3)
 
+  // Add a method to start a consumer for the direct analyze module commands
+  private def directAnalyzeModuleConsumer(): Consumer.DrainingControl[Done] = {
+    val producerSink = Producer.plainSink(producerSettings)
+
+    Consumer
+      .committableSource(
+        consumerSettings
+          .withClientId(s"${config.getKafkaClientId}-${getClass.getSimpleName}-direct-analyze")
+          .withGroupId(s"${config.getKafkaClientId}-${getClass.getSimpleName}-direct-analyze"),
+        Subscriptions.topics(KafkaTopics.AnalyzeModuleCommands.toString()))
+      .map { msg =>
+        try {
+          val command = AnalyzeModuleCommand.parseFrom(msg.record.value())
+          logger.info(s"Received direct analyze module command for module ${command.moduleId}")
+          directModuleAnalysisRequests.increment()
+          (command.moduleId, command.projectId, msg.committableOffset)
+        } catch {
+          case ex: Exception =>
+            logger.error(s"Failed to parse direct analyze module command", ex)
+            recordProcessingError()
+            ("", "", msg.committableOffset)
+        }
+      }
+      .filter { case (moduleId, projectId, _) => moduleId.nonEmpty && projectId.nonEmpty }
+      .mapAsync(1) { case (moduleId, projectId, offset) =>
+        val lockKey = s"module-analysis-lock:$moduleId"
+        logger.debug(s"Attempting to acquire lock for module $moduleId")
+        
+        redisLock.withLock(lockKey) {
+          logger.debug(s"Starting direct analysis for module $moduleId")
+          analyzeModule(moduleId, projectId)
+            .map { eventOpt =>
+              logger.debug(s"Completed direct analysis for module $moduleId")
+              (eventOpt, offset)
+            }
+            .recover { case ex =>
+              logger.error(s"Direct analysis failed for module $moduleId", ex)
+              recordProcessingError()
+              (None, offset)
+            }
+        }.recover {
+          case ex: RuntimeException if ex.getMessage.contains("Could not acquire lock") =>
+            logger.debug(s"Skipping direct analysis for module $moduleId - lock acquisition failed")
+            (None, offset)
+          case ex =>
+            logger.error(s"Error during direct module analysis for $moduleId", ex)
+            recordProcessingError()
+            (None, offset)
+        }
+      }
+      .collect { case (Some(event), offset) =>
+        (
+          new ProducerRecord[Array[Byte], Array[Byte]](
+            KafkaTopics.ModuleAnalyzedEvents.toString(),
+            event.toByteArray
+          ),
+          offset
+        )
+      }
+      .groupedWithin(10, 3.seconds)
+      .mapAsync(3) { messages =>
+        val (records, offsets) = messages.unzip
+        Source(records)
+          .runWith(producerSink)
+          .map { result =>
+            recordMessageProcessed()
+            offsets
+          }
+      }
+      .mapAsync(3) { offsets =>
+        offsets
+          .foldLeft(ConsumerMessage.CommittableOffsetBatch.empty)(_.updated(_))
+          .commitScaladsl()
+          .recover { case ex =>
+            logger.error("Failed to commit offsets", ex)
+            recordProcessingError()
+            throw ex
+          }
+      }
+      .withAttributes(ActorAttributes.supervisionStrategy(decider))
+      .toMat(Sink.ignore)(Keep.both)
+      .mapMaterializedValue(Consumer.DrainingControl.apply[Done])
+      .run()
+  }
+
   protected override def startService(): Consumer.DrainingControl[Done] = {
+    // Start both consumers
+    logger.info("Starting package analyzed events consumer")
+    val packageAnalyzedControl = startPackageAnalyzedConsumer()
+    
+    logger.info("Starting direct analyze module commands consumer")
+    val directAnalyzeControl = directAnalyzeModuleConsumer()
+    
+    // Return the package analyzed consumer control for backward compatibility
+    packageAnalyzedControl
+  }
+  
+  private def startPackageAnalyzedConsumer(): Consumer.DrainingControl[Done] = {
     val producerSink = Producer.plainSink(producerSettings)
 
     packageAnalyzedEventsSource()
