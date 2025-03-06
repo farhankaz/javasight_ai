@@ -50,6 +50,8 @@ import akka.kafka.ConsumerMessage
 import org.mongodb.scala.model.Updates
 import com.farhankaz.javasight.utils.Ollama
 import com.farhankaz.javasight.utils.CodeAnalyzer
+import com.knuddels.jtokkit.Encodings
+import com.knuddels.jtokkit.api.EncodingType
 
 class FileAnalysisService(
     config: ConfigurationLoader,
@@ -75,6 +77,20 @@ class FileAnalysisService(
   private val analysisFailures = metricsRegistry.counter(
     "javasight_file_analysis_failures_total",
     Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env, "failure_reason", "analysis_error")
+  )
+  
+  // Metrics for token counting
+  private val fileCodeTokens = metricsRegistry.summary(
+    "javasight_file_code_tokens",
+    Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env)
+  )
+  private val fileAnalysisTokens = metricsRegistry.summary(
+    "javasight_file_analysis_tokens",
+    Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env)
+  )
+  private val totalTokenUsage = metricsRegistry.counter(
+    "javasight_token_usage_total",
+    Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env, "usage_type", "analysis")
   )
 
   private val javaFilesCollection = database.getCollection[Document]("java_files")
@@ -160,6 +176,24 @@ class FileAnalysisService(
 
   }
 
+  /**
+   * Counts the tokens in a given text using the CL100K_BASE encoding used by models like GPT-4.
+   *
+   * @param text The text to count tokens for
+   * @return The number of tokens in the text
+   */
+  private def countTokens(text: String): Int = {
+    try {
+      val encodingRegistry = Encodings.newDefaultEncodingRegistry()
+      val encoding = encodingRegistry.getEncoding(EncodingType.CL100K_BASE) // Common encoding for GPT models
+      encoding.countTokens(text)
+    } catch {
+      case ex: Exception =>
+        logger.error("Failed to count tokens", ex)
+        0 // Return 0 on error
+    }
+  }
+
   private def analyzeFile(file: ModuleFileScannedEvent): Future[FileAnalyzedEvent] = {
     logger.trace(s"Analyzing file: ${file.fileId} - ${file.filePath} - package ${file.parentPackageId}")
     analysisRequests.increment()
@@ -170,7 +204,9 @@ class FileAnalysisService(
         equal("_id", new ObjectId(file.fileId)),
         Updates.combine(
           set("shortAnalysis", "not analyzed"),
-          set("analysisDate", System.currentTimeMillis())
+          set("analysisDate", System.currentTimeMillis()),
+          set("codeTokenCount", 0),         // Set to 0 for skipped files
+          set("analysisTokenCount", 0)      // Set to 0 for skipped files
         )
       ).toFuture().map { result =>
         filesAnalyzed.increment()
@@ -187,21 +223,36 @@ class FileAnalysisService(
     } else {
       val fileContent = new String(Files.readAllBytes(Paths.get(file.filePath)))
       
+      // Count tokens in the Java code
+      val codeTokenCount = countTokens(fileContent)
+      logger.debug(s"Code token count for ${file.filePath}: $codeTokenCount")
+      
       getProjectContext(file.projectId).flatMap { projectContext =>
         // val fullAnalysis = ollama.analyzeFile(fileContent, projectContext)
         val shortAnalysis = ollama.analyzeFileShort(fileContent, projectContext)
         
         Future.sequence(Seq(shortAnalysis)).flatMap { case Seq(shortContent) =>
+          // Count tokens in the analysis
+          val analysisTokenCount = countTokens(shortContent)
+          logger.debug(s"Analysis token count for ${file.filePath}: $analysisTokenCount")
+          
+          // Record token metrics
+          fileCodeTokens.record(codeTokenCount)
+          fileAnalysisTokens.record(analysisTokenCount)
+          totalTokenUsage.increment(analysisTokenCount.toDouble)
+          
           javaFilesCollection.updateOne(
             equal("_id", new ObjectId(file.fileId)),
             Updates.combine(
               // set("analysis", content),
               set("shortAnalysis", shortContent),
-              set("analysisDate", System.currentTimeMillis())
+              set("analysisDate", System.currentTimeMillis()),
+              set("codeTokenCount", codeTokenCount),           // Store code token count
+              set("analysisTokenCount", analysisTokenCount)    // Store analysis token count
             )
           ).toFuture().map { result =>
             filesAnalyzed.increment()
-            logger.info(s"Analyzed file ${file.filePath} with id ${file.fileId}")
+            logger.info(s"Analyzed file ${file.filePath} with id ${file.fileId} (code: $codeTokenCount tokens, analysis: $analysisTokenCount tokens)")
             FileAnalyzedEvent(
               fileId = file.fileId,
               packageId = file.parentPackageId,

@@ -47,7 +47,7 @@ object ServiceApp extends App {
   val healthCheckService = new HealthCheckService(mongoClient, configLoader)
 
   val prometheusRegistry: PrometheusMeterRegistry = startHealthCheckAndMetricsServer()
-  val llmAnalyzer: CodeAnalyzer = new utils.Ollama(configLoader, prometheusRegistry)
+  val llmAnalyzer: CodeAnalyzer = new utils.BedrockAnalyzer(configLoader, prometheusRegistry)
   val controls: Seq[Consumer.DrainingControl[Done]] = startServices(llmAnalyzer)
   registerCoordinatorShutdownTask(prometheusRegistry, controls)
 

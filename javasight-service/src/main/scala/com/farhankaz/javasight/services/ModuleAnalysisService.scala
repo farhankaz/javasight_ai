@@ -39,6 +39,8 @@ import java.lang
 import scala.collection.JavaConverters._
 import com.farhankaz.javasight.utils.Ollama
 import com.farhankaz.javasight.utils.CodeAnalyzer
+import com.knuddels.jtokkit.Encodings
+import com.knuddels.jtokkit.api.EncodingType
 
 class ModuleAnalysisService(
     config: ConfigurationLoader,
@@ -69,6 +71,17 @@ class ModuleAnalysisService(
     "javasight_module_analysis_failures_total",
     Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env, "failure_reason", "analysis_error")
   )
+  
+  // Metrics for token counting
+  private val moduleAnalysisTokens = metricsRegistry.summary(
+    "javasight_module_analysis_tokens",
+    Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env)
+  )
+  private val totalTokenUsage = metricsRegistry.counter(
+    "javasight_token_usage_total",
+    Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env, "usage_type", "module_analysis")
+  )
+  
   private val javaPackagesCollection = database.getCollection[Document]("java_packages")
   private val javaModulesCollection = database.getCollection[Document]("java_modules")
   private val projectContextsCollection = database.getCollection[Document]("project_contexts")
@@ -377,11 +390,40 @@ class ModuleAnalysisService(
     }
     ollama.analyzeModule(moduleName, projectName, packageAnalyses, projectContext)
   }
+  
+  /**
+   * Counts the tokens in a given text using the CL100K_BASE encoding used by models like GPT-4.
+   *
+   * @param text The text to count tokens for
+   * @return The number of tokens in the text
+   */
+  private def countTokens(text: String): Int = {
+    try {
+      val encodingRegistry = Encodings.newDefaultEncodingRegistry()
+      val encoding = encodingRegistry.getEncoding(EncodingType.CL100K_BASE) // Common encoding for GPT models
+      encoding.countTokens(text)
+    } catch {
+      case ex: Exception =>
+        logger.error("Failed to count tokens", ex)
+        0 // Return 0 on error
+    }
+  }
 
   private def updateModuleAnalysis(moduleId: String, analysis: String): Future[Unit] = {
+    // Count tokens in the analysis
+    val analysisTokenCount = countTokens(analysis)
+    logger.debug(s"Analysis token count for module $moduleId: $analysisTokenCount")
+    
+    // Record token metrics
+    moduleAnalysisTokens.record(analysisTokenCount)
+    totalTokenUsage.increment(analysisTokenCount.toDouble)
+    
     javaModulesCollection.updateOne(
       equal("_id", new ObjectId(moduleId)),
-      set("analysis", analysis)
+      org.mongodb.scala.model.Updates.combine(
+        set("analysis", analysis),
+        set("analysisTokenCount", analysisTokenCount)
+      )
     ).toFuture().map { result =>
       logger.info(s"Updated analysis for module $moduleId")
     }

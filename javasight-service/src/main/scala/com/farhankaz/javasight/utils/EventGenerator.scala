@@ -13,141 +13,84 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success}
 
 /**
- * Utility for generating and sending test events to Kafka topics.
- * 
- * This class is primarily used for testing the event-driven processing 
- * pipeline by manually triggering events.
+ * A utility class to generate test events for the Kafka-based event processing system.
+ * This can be used to test the event handling capabilities of various services,
+ * particularly the ProjectLlmContextService.
  */
 class EventGenerator(config: ConfigurationLoader)(implicit system: ActorSystem, ec: ExecutionContext) {
+  
   private val logger = LoggerFactory.getLogger(getClass)
   
-  // Set up Kafka producer
+  // Configure Kafka producer settings
   private val producerSettings = ProducerSettings(system, new ByteArraySerializer, new ByteArraySerializer)
     .withBootstrapServers(config.getKafkaBootstrapServers)
     .withClientId(s"${config.getKafkaClientId}-event-generator")
   
+  // Create a Kafka producer
   private val producer = SendProducer(producerSettings)
   
   /**
-   * Sends a ProjectAnalyzedEvent to trigger the ProjectLlmContextService.
-   * 
-   * @param projectId The ID of the project that was analyzed
-   * @param analysis Optional analysis text (defaults to empty string)
-   * @return A Future that completes when the event is sent
+   * Sends a ProjectAnalyzedEvent to the appropriate Kafka topic to trigger the
+   * ProjectLlmContextService processing.
+   *
+   * @param projectId The ID of the project that has been analyzed
+   * @param analysis Optional analysis text (not used in the current implementation)
+   * @return A Future representing the completion of the send operation
    */
   def sendProjectAnalyzedEvent(projectId: String, analysis: String = ""): Future[Unit] = {
-    logger.info(s"Generating ProjectAnalyzedEvent for project $projectId")
-    
     try {
+      logger.info(s"Generating ProjectAnalyzedEvent for project ID: $projectId")
+      
+      // Create the event with current timestamp
       val event = ProjectAnalyzedEvent(
         projectId = projectId,
-        analysis = analysis,
         timestamp = System.currentTimeMillis()
       )
       
+      // Create a Kafka record targeted to the ProjectAnalyzedEvents topic
       val record = new ProducerRecord[Array[Byte], Array[Byte]](
-        KafkaTopics.ProjectAnalyzedEvents.toString,
+        KafkaTopics.ProjectAnalyzedEvents.toString, 
         event.toByteArray
       )
       
-      producer.send(record)
-        .map { _ =>
-          logger.info(s"Successfully sent ProjectAnalyzedEvent for project $projectId")
-          () // Explicitly return Unit
-        }
-        .recover {
-          case ex: Exception =>
-            logger.error(s"Failed to send ProjectAnalyzedEvent for project $projectId", ex)
-            throw ex
-        }
+      // Send the record to Kafka
+      producer.send(record).map { recordMetadata =>
+        logger.info(s"Successfully sent ProjectAnalyzedEvent for project $projectId " +
+          s"to topic ${recordMetadata.topic()} partition ${recordMetadata.partition()} " +
+          s"offset ${recordMetadata.offset()}")
+      }.recover {
+        case ex: Exception =>
+          logger.error(s"Failed to send ProjectAnalyzedEvent for project $projectId", ex)
+          throw ex
+      }
     } catch {
       case ex: Exception =>
         logger.error(s"Error creating ProjectAnalyzedEvent for project $projectId", ex)
-        Future.failed[Unit](ex)
+        Future.failed(ex)
     }
   }
   
   /**
-   * Closes the Kafka producer.
+   * Closes the Kafka producer when done to free up resources
    */
-  def close(): Future[Unit] = {
+  def shutdown(): Future[Unit] = {
     Future {
+      logger.info("Shutting down EventGenerator")
       producer.close()
-      () // Explicitly return Unit
-    }.recover {
-      case ex: Exception =>
-        logger.error("Error closing Kafka producer", ex)
-        throw ex
     }
   }
+  
+  /**
+   * Alias for shutdown() to maintain compatibility with existing code
+   */
+  def close(): Future[Unit] = shutdown()
 }
 
 /**
- * Companion object providing a convenient factory method and command-line interface.
+ * Companion object with factory method
  */
-object EventGenerator extends App {
-  
-  private val logger = LoggerFactory.getLogger(getClass)
-  
-  // Parse command line arguments
-  case class Config(
-    env: String = "local",
-    projectId: String = "",
-    analysis: String = ""
-  )
-  
-  val parser = new scopt.OptionParser[Config]("EventGenerator") {
-    head("EventGenerator", "1.0")
-    
-    opt[String]('e', "env")
-      .action((x, c) => c.copy(env = x))
-      .text("Environment (local, dev, prod)")
-    
-    opt[String]('p', "project-id")
-      .required()
-      .action((x, c) => c.copy(projectId = x))
-      .text("Project ID (required)")
-    
-    opt[String]('a', "analysis")
-      .action((x, c) => c.copy(analysis = x))
-      .text("Analysis text")
-    
-    help("help").text("Prints this usage text")
-  }
-  
-  // If running as a standalone app
-  if (args.nonEmpty) {
-    parser.parse(args, Config()) match {
-      case Some(config) =>
-        implicit val system: ActorSystem = ActorSystem("EventGenerator")
-        implicit val ec: ExecutionContext = system.dispatcher
-        
-        val configLoader = ConfigurationLoader(config.env)
-        val eventGenerator = new EventGenerator(configLoader)
-        
-        logger.info(s"Sending ProjectAnalyzedEvent for project ${config.projectId}")
-        
-        val result = eventGenerator.sendProjectAnalyzedEvent(config.projectId, config.analysis)
-        
-        result.onComplete {
-          case Success(_) =>
-            logger.info("Event sent successfully")
-            eventGenerator.close().onComplete(_ => system.terminate())
-          case Failure(ex) =>
-            logger.error("Failed to send event", ex)
-            eventGenerator.close().onComplete(_ => system.terminate())
-        }
-        
-      case None =>
-        // Arguments were invalid
-        System.exit(1)
-    }
-  }
-  
-  /**
-   * Creates a new EventGenerator instance.
-   */
-  def apply(configLoader: ConfigurationLoader)(implicit system: ActorSystem, ec: ExecutionContext): EventGenerator = {
-    new EventGenerator(configLoader)
+object EventGenerator {
+  def apply(config: ConfigurationLoader)(implicit system: ActorSystem, ec: ExecutionContext): EventGenerator = {
+    new EventGenerator(config)
   }
 }

@@ -18,7 +18,9 @@ import java.nio.file.{Files, Paths}
 import scala.jdk.CollectionConverters._
 import com.farhankaz.javasight.utils.{ConfigurationLoader, RedissonLock, Ollama}
 import com.farhankaz.javasight.model.protobuf.{ImportModule, ImportFile}
-import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.{MeterRegistry, Tags}
+import com.knuddels.jtokkit.Encodings
+import com.knuddels.jtokkit.api.EncodingType
 import org.bson.types.ObjectId
 import akka.kafka.ProducerMessage
 import akka.NotUsed
@@ -54,6 +56,16 @@ class PackageAnalysisService(
 
   private val packagesAnalyzed = metricsRegistry.counter(s"${config.env}_javasight_packageanalysis_success")
   private val packageAnalysisFailures = metricsRegistry.counter(s"${config.env}_javasight_packageanalysis_failures")
+  
+  // Metrics for token counting
+  private val packageAnalysisTokens = metricsRegistry.summary(
+    "javasight_package_analysis_tokens",
+    Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env)
+  )
+  private val totalTokenUsage = metricsRegistry.counter(
+    "javasight_token_usage_total",
+    Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env, "usage_type", "package_analysis")
+  )
   private val javaPackagesCollection = database.getCollection[Document]("java_packages")
   private val javaFilesCollection = database.getCollection[Document]("java_files")
   private val projectContextsCollection = database.getCollection[Document]("project_contexts")
@@ -246,10 +258,39 @@ class PackageAnalysisService(
     ollama.analyzePackage(packageName, fileAnalyses, projectContext)
   }
 
+  /**
+   * Counts the tokens in a given text using the CL100K_BASE encoding used by models like GPT-4.
+   *
+   * @param text The text to count tokens for
+   * @return The number of tokens in the text
+   */
+  private def countTokens(text: String): Int = {
+    try {
+      val encodingRegistry = Encodings.newDefaultEncodingRegistry()
+      val encoding = encodingRegistry.getEncoding(EncodingType.CL100K_BASE) // Common encoding for GPT models
+      encoding.countTokens(text)
+    } catch {
+      case ex: Exception =>
+        logger.error("Failed to count tokens", ex)
+        0 // Return 0 on error
+    }
+  }
+
   private def updatePackageAnalysis(packageId: String, analysis: String): Future[Unit] = {
+    // Count tokens in the analysis
+    val analysisTokenCount = countTokens(analysis)
+    logger.debug(s"Analysis token count for package $packageId: $analysisTokenCount")
+    
+    // Record token metrics
+    packageAnalysisTokens.record(analysisTokenCount)
+    totalTokenUsage.increment(analysisTokenCount.toDouble)
+    
     javaPackagesCollection.updateOne(
       equal("_id", new ObjectId(packageId)),
-      set("analysis", analysis)
+      org.mongodb.scala.model.Updates.combine(
+        set("analysis", analysis),
+        set("analysisTokenCount", analysisTokenCount)
+      )
     ).toFuture().map(_ => () )
   }
 
