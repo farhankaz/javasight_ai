@@ -75,6 +75,7 @@ object ServiceApp extends App {
       new PackageAnalysisService(configLoader, prometheusRegistry, database, redis, codeAnalyzer),
       new ModuleAnalysisService(configLoader, prometheusRegistry, database, redis, codeAnalyzer),
       new ProjectAnalysisService(configLoader, prometheusRegistry, database, redis, codeAnalyzer),
+      new ProjectLlmContextService(configLoader, prometheusRegistry, database, redis),
       new PackageMetricsService(configLoader, prometheusRegistry, database),
       new ModuleMetricsService(configLoader, prometheusRegistry, database),
       new ProjectMetricsService(configLoader, prometheusRegistry, database)

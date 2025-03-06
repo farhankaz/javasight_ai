@@ -78,10 +78,10 @@ class FileAnalysisService(
   )
 
   private val javaFilesCollection = database.getCollection[Document]("java_files")
-  private val projectContextsCollection = database.getCollection[Document]("project_contexts")
+  private val projectContextCollection = database.getCollection[Document]("project_context")
 
   private def getProjectContext(projectId: String): Future[Option[String]] = {
-    projectContextsCollection
+    projectContextCollection
       .find(equal("projectId", projectId))
       .first()
       .toFutureOption()

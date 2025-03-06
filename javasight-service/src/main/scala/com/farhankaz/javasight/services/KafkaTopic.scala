@@ -26,6 +26,6 @@ object KafkaTopics {
   case object PackageDiscoveryEvents extends KafkaTopic { override def toString = "package_discovery_events" }
   case object ModuleAnalyzedEvents extends KafkaTopic { override def toString = "module_analyzed_events" }
   case object ProjectAnalyzedEvents extends KafkaTopic { override def toString = "project_analyzed_events" }
-
+  case object ProjectLlmContextGeneratedEvents extends KafkaTopic { override def toString = "project_llm__context_generated_events" }
   case object ModuleMetricsEvent extends KafkaTopic { override def toString = "project_analyzed_events" }
 }

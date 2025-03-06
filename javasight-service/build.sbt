@@ -58,7 +58,10 @@ libraryDependencies ++= Seq(
   "software.amazon.awssdk" % "bedrockruntime" % "2.28.10",
   
   // Add STS for AWS authentication
-  "software.amazon.awssdk" % "sts" % "2.28.10"
+  "software.amazon.awssdk" % "sts" % "2.28.10",
+  
+  // JTokkit for token counting
+  "com.knuddels" % "jtokkit" % "1.1.0"
 )
 
 Compile / PB.targets := Seq(

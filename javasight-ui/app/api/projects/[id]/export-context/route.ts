@@ -11,6 +11,24 @@ export async function GET(
     const client = await clientPromise;
     const db = client.db();
     
+    // Try to fetch the pre-generated context from the project_context collection
+    const projectContext = await db.collection('project_llm_contexts').findOne({
+      projectId: id
+    });
+    
+    // If we found pre-generated context, return it immediately
+    if (projectContext && projectContext.context) {
+      return new NextResponse(projectContext.context, {
+        headers: {
+          'Content-Type': 'text/markdown',
+          'Content-Disposition': `attachment; filename="context.md"`,
+        },
+      });
+    }
+    
+    // If no pre-generated context exists, fallback to generating it on the fly
+    // for backward compatibility
+    
     // Fetch project data
     const project = await db.collection('projects').findOne({
       _id: new ObjectId(id)
@@ -19,6 +37,8 @@ export async function GET(
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
+    
+    console.warn(`No pre-generated context found for project ${id}, generating on the fly`);
     
     // Fetch modules for this project
     const modules = await db.collection('java_modules')
