@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+      <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%logger{36}] - %msg%n</pattern>
+      <charset>UTF-8</charset>
+    </encoder>
+  </appender>
+
+  <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>logs/javasight-process-scala.log</file>
+    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+      <fileNamePattern>logs/javasight-process-scala.%d{yyyy-MM-dd}.log</fileNamePattern>
+      <maxHistory>30</maxHistory>
+    </rollingPolicy>
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <fieldNames>
+        <timestamp>timestamp</timestamp>
+        <level>level</level>
+        <thread>thread</thread>
+        <logger>logger</logger>
+        <message>message</message>
+        <stackTrace>stack_trace</stackTrace>
+      </fieldNames>
+      <timeZone>UTC</timeZone>
+      <includeContext>true</includeContext>
+      <includeCallerData>true</includeCallerData>
+    </encoder>
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="STDOUT" />
+    <appender-ref ref="FILE" />
+  </root>
+
+  <logger name="javasight" level="DEBUG" />
+  <logger name="akka" level="WARN" />
+  <logger name="kamon" level="WARN" />
+  <logger name="org.mongodb.driver" level="WARN" />
+  <logger name="org.apache.kafka" level="WARN" />
+</configuration>

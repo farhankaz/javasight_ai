@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package com.farhankaz.javasight.model;
+
+
+//Commands
+
+message ImportProjectCommand {
+  string project_name = 1;
+  string project_location = 2;
+  string project_context = 3;
+  int64 timestamp = 4;
+}
+
+message ImportMavenProjectCommand {
+  string project_id = 1;
+  string project_location = 2;
+  int64 timestamp = 3;
+}
+
+message ImportModuleCommand {
+  string project_id = 1;
+  string name = 2;
+  string location = 3;
+  int64 timestamp = 4;
+}
+
+message ScanModuleDirectoryCommand {
+  string module_id = 1;
+  string project_id = 2;
+  string path = 3;
+  optional string parent_package_id = 4; 
+  int64 timestamp = 5;
+}
+
+message ScanModuleFileCommand {
+  string module_id = 2;
+  string project_id = 3;
+  optional string parent_package_id = 4; 
+  string file_path = 5;
+  int64 timestamp = 6;
+}
+
+message AnalyzeFileCommand {
+  string file_id = 1;
+  bool detailed = 2;
+  int64 timestamp = 3;
+}
+
+message AnalyzePackageCommand {
+  string package_id = 1;
+  bool detailed = 2;
+  int64 timestamp = 3;
+}
+
+message Module {
+  string name = 1;
+  string location = 2;
+  int64 timestamp = 3;
+}
+
+// Events
+message ProjectImportedEvent {
+  string project_id = 1;
+  string name = 2;
+  string location = 3;
+  repeated Module modules = 4;
+  int64 timestamp = 5;
+}
+
+message MavenProjectImportedEvent {
+  string project_id = 1;
+  string project_location = 2;
+  int64 timestamp = 3;
+}
+
+message ModuleImportedEvent {
+  string project_id = 1;
+  string module_id = 2;
+  string name = 3;
+  string location = 4;
+  int64 timestamp = 5;
+}
+
+message ModuleDirectoryScannedEvent {
+  string module_id = 1;
+  string project_id = 2;
+  string path = 3;
+  optional string parent_package_id = 4; 
+  int64 timestamp = 5;
+}
+
+message ModuleFileScannedEvent {
+  string module_id = 1;
+  string project_id = 2;
+  optional string parent_package_id = 3; 
+  string file_path = 4;
+  string file_id = 5;
+  int64 timestamp = 6;
+}
+
+message FileAnalyzedEvent {
+  string file_id = 1;
+  string project_id = 2;
+  string module_id = 3;
+  optional string package_id = 5; 
+  string file_path = 6;
+  int64 timestamp = 7;
+}
+
+message PackageAnalyzedEvent {
+  string package_id = 1;
+  string module_id = 2;
+  string project_id = 3;
+  optional string parent_package_id = 4;
+  string package_name = 5;
+  int64 timestamp = 6;
+}
+
+message ModuleAnalyzedEvent {
+  string module_id = 1;
+  string project_id = 2;
+  string analysis = 3;
+  int64 timestamp = 4;
+}
+
+message ProjectAnalyzedEvent {
+  string project_id = 1;
+  string analysis = 2;
+  int64 timestamp = 3;
+}
+
+message PackageDiscoveryEvent {
+  string package_id = 1;
+  string module_id = 2;
+  string project_id = 3;
+  optional string parent_package_id = 4;
+  int64 timestamp = 5;
+}
+
+message ModuleMetricsEvent {
+  string module_id = 1;
+  string project_id = 2;
+  int64 timestamp = 3;
+}
+
+message ProjectMetricsEvent {
+  string project_id = 1;
+  int64 timestamp = 2;
+}
