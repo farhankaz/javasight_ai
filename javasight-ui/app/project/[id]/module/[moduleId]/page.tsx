@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, use } from 'react';
 import Breadcrumb from '@/app/components/Breadcrumb';
-import PackageCard from '@/app/components/PackageCard';
-import { use } from 'react';
+import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'react-hot-toast';
+import { FolderIcon } from '@heroicons/react/24/outline';
 
 interface Package {
   _id: string;
@@ -201,21 +201,34 @@ export default function ModulePage({ params }: { params: Promise<{ id: string, m
             </div>
           </div>
 
-          <div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">Packages</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {module.packages.map((pkg) => (
-                <PackageCard
-                  key={pkg._id}
-                  name={pkg.packageName}
-                  files={pkg.metrics?.fileCount || 0}
-                  linesOfCode={pkg.metrics?.linesOfCode || 0}
-                  description={""}
-                  projectId={resolvedParams.id}
-                  moduleId={resolvedParams.moduleId}
-                  packageId={pkg._id}
-                />
-              ))}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead>
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Package Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Files</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lines of Code</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {module.packages.map((pkg) => (
+                    <tr key={pkg._id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        <Link
+                          href={`/project/${resolvedParams.id}/module/${resolvedParams.moduleId}/package/${pkg._id}`}
+                          className="flex items-center text-indigo-600 hover:text-indigo-800"
+                        >
+                          <FolderIcon className="w-4 h-4 mr-2" />
+                          {pkg.packageName}
+                        </Link>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pkg.metrics?.fileCount || 0}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pkg.metrics?.linesOfCode || 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
