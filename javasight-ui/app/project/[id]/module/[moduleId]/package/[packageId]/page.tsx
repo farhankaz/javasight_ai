@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, use } from 'react';
-import { DocumentDuplicateIcon, CodeBracketIcon } from '@heroicons/react/24/outline';
+import { DocumentDuplicateIcon, CodeBracketIcon, FolderIcon } from '@heroicons/react/24/outline';
 import ReactMarkdown from 'react-markdown';
 import Breadcrumb from '@/app/components/Breadcrumb';
 
@@ -35,6 +35,7 @@ export default function PackageDetailsPage({
     const fetchPackageDetails = async () => {
       try {
         const details = await fetch(`/api/projects/${resolvedParams.id}/modules/${resolvedParams.moduleId}/packages/${resolvedParams.packageId}`).then(res => res.json());
+        console.log(details);
         setPackageDetails(details);
       } catch (err) {
         setError(err.message);
@@ -69,7 +70,10 @@ export default function PackageDetailsPage({
           />
 
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h1 className="text-2xl font-bold mb-4">{packageDetails.packageName}</h1>
+            <div className="flex items-center gap-2 mb-4">
+              <FolderIcon className="w-6 h-6 text-indigo-500" />
+              <h1 className="text-xl font-bold">Package: {packageDetails.packageName}</h1>
+            </div>
             <div className="prose prose-sm max-w-none mb-6">
               <ReactMarkdown>{packageDetails.description}</ReactMarkdown>
             </div>
@@ -87,7 +91,7 @@ export default function PackageDetailsPage({
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-xl font-semibold mb-4">Files</h2>
+            <h3 className="text-lg font-semibold mb-4">Files In This Package</h3>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead>

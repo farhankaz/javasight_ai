@@ -38,17 +38,39 @@ export async function GET(
 
     // Get all files in the package
     const files = await db.collection('java_files')
-      .find({ 
-        projectId: id,
-        moduleId: moduleId,
+      .find({
         packageId: packageId
       })
       .project({
         filePath: 1,
         linesOfCode: 1,
-        shortAnalysis: 1
+        shortAnalysis: 1,
+        _id: 1
       })
       .toArray();
+
+    // Try to get package metrics
+    let packageMetrics: { fileCount?: number; linesOfCode?: number } = {};
+    try {
+      const metricsDoc = await db.collection('java_packages_metrics').findOne(
+        { package_id: packageId }
+      );
+      
+      if (metricsDoc) {
+        packageMetrics = {
+          fileCount: metricsDoc.fileCount,
+          linesOfCode: metricsDoc.linesOfCode
+        };
+      }
+    } catch (error) {
+      console.warn('Failed to retrieve package metrics:', error);
+      // Continue without metrics
+    }
+
+    // Calculate file count and lines of code
+    const fileCount = packageMetrics.fileCount || files.length;
+    const linesOfCode = packageMetrics.linesOfCode ||
+      files.reduce((total, file) => total + (typeof file.linesOfCode === 'number' ? file.linesOfCode : 0), 0);
 
     const response = {
       projectId: id,
@@ -56,10 +78,14 @@ export async function GET(
       packageId: packageId,
       packageName: packageDetails.packageName,
       description: packageDetails.analysis || '',
-      fileCount: packageDetails.fileCount,
-      linesOfCode: packageDetails.linesOfCode,
+      fileCount: fileCount,
+      linesOfCode: linesOfCode,
+      metrics: {
+        fileCount: fileCount,
+        linesOfCode: linesOfCode
+      },
       files: files.map(file => ({
-        id: file._id.$toString,
+        id: file._id.toString(), // Fixed toString function call
         name: file.filePath.split('/').pop(),
         linesOfCode: file.linesOfCode,
         description: file.shortAnalysis || ''
