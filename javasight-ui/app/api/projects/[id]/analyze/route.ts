@@ -19,10 +19,11 @@ export async function POST(
     await producer.connect();
 
     // Get project information to retrieve module IDs
-    // Use absolute URL with origin for API routes
+    // Dynamically determine the origin from the request
+    const requestUrl = new URL(request.url);
     const origin = process.env.NEXT_PUBLIC_API_URL ||
                   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` :
-                  'http://localhost:3000');
+                  `${requestUrl.protocol}//${requestUrl.host}`);
     
     const projectId = params.id;
     const projectResponse = await fetch(`${origin}/api/projects/${projectId}`);

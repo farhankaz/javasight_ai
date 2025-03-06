@@ -5,6 +5,12 @@ import Breadcrumb from '@/app/components/Breadcrumb';
 import ProjectMetrics from '@/app/components/ProjectMetrics';
 import ModuleCard from '@/app/components/ModuleCard';
 import ReactMarkdown from 'react-markdown';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/app/components/ui/dropdown-menu';
 
 interface Module {
   _id: string;
@@ -53,6 +59,8 @@ export default function ProjectPage({ params }: PageProps) {
   const [analyzeSuccess, setAnalyzeSuccess] = useState<string | null>(null);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [showFullDescription, setShowFullDescription] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const resolvedParams = use(params);
   const id = resolvedParams.id;
 
@@ -71,6 +79,41 @@ export default function ProjectPage({ params }: PageProps) {
       console.error('Error fetching project:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportContext = async () => {
+    try {
+      setExporting(true);
+      setExportError(null);
+      
+      // Fetch the context data as markdown
+      const response = await fetch(`/api/projects/${id}/export-context`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to export context');
+      }
+      
+      // Get the markdown content directly
+      const markdownContent = await response.text();
+      
+      // Create a downloadable file
+      const blob = new Blob([markdownContent], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'context.md';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+    } catch (error) {
+      console.error('Error exporting context:', error);
+      setExportError(error instanceof Error ? error.message : 'Failed to export context');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -156,23 +199,42 @@ export default function ProjectPage({ params }: PageProps) {
               </div>
             </div>
             <div>
-              <button 
-                onClick={triggerProjectAnalysis}
-                disabled={analyzing}
-                className={`px-4 py-2 rounded-md ${analyzing ? 'bg-gray-400' : 'bg-indigo-600 hover:bg-indigo-700'} text-white font-medium flex items-center`}
-              >
-                {analyzing ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Analyzing...
-                  </>
-                ) : (
-                  'Analyze All Modules'
-                )}
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    disabled={analyzing || exporting}
+                    className={`px-4 py-2 rounded-md ${(analyzing || exporting) ? 'bg-gray-400' : 'bg-gray-200 hover:bg-gray-300'} text-gray-700 font-medium flex items-center`}
+                  >
+                    {analyzing ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Analyzing...
+                      </>
+                    ) : exporting ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Exporting...
+                      </>
+                    ) : (
+                      '...'
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={triggerProjectAnalysis}>
+                    Analyze All Modules
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportContext}>
+                    Export Analysis Context
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               
               {analyzeSuccess && (
                 <div className="mt-2 text-sm text-green-600">{analyzeSuccess}</div>
@@ -180,6 +242,10 @@ export default function ProjectPage({ params }: PageProps) {
               
               {analyzeError && (
                 <div className="mt-2 text-sm text-red-600">Error: {analyzeError}</div>
+              )}
+              
+              {exportError && (
+                <div className="mt-2 text-sm text-red-600">Export Error: {exportError}</div>
               )}
             </div>
           </div>
