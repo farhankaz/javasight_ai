@@ -1,9 +1,38 @@
 import { NextResponse } from 'next/server'
 import clientPromise from '@/lib/mongodb'
-import { MongoServerError } from 'mongodb'
+import { MongoServerError, ObjectId } from 'mongodb'
+import { Kafka, Partitioners } from 'kafkajs'
 
 // Add explicit runtime configuration
 export const runtime = 'nodejs'
+
+// Get environment variables with fallbacks
+const KAFKA_BROKERS = process.env.KAFKA_BROKERS || 'localhost:9092'
+
+// Initialize Kafka
+const kafka = new Kafka({
+  clientId: 'javasight-ui',
+  brokers: KAFKA_BROKERS.split(','),
+})
+
+const producer = kafka.producer({
+  createPartitioner: Partitioners.LegacyPartitioner
+})
+let isProducerConnected = false
+
+// Connect to Kafka lazily
+async function ensureProducerConnected() {
+  if (!isProducerConnected) {
+    await producer.connect()
+    isProducerConnected = true
+  }
+}
+
+// Validate GitHub URL
+function isValidGithubUrl(url: string): boolean {
+  const githubUrlPattern = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+(\.git)?$/
+  return githubUrlPattern.test(url)
+}
 
 export async function GET() {
   try {
@@ -68,4 +97,85 @@ export async function GET() {
       { status: 500 }
     )
   }
-} 
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const { projectName, githubUrl, projectContext = '' } = body
+
+    // Validate required fields
+    if (!projectName) {
+      return NextResponse.json(
+        { error: 'Project name is required' },
+        { status: 400 }
+      )
+    }
+
+    if (!githubUrl) {
+      return NextResponse.json(
+        { error: 'GitHub URL is required' },
+        { status: 400 }
+      )
+    }
+
+    // Validate GitHub URL format
+    if (!isValidGithubUrl(githubUrl)) {
+      return NextResponse.json(
+        { error: 'Invalid GitHub URL format' },
+        { status: 400 }
+      )
+    }
+
+    const client = await clientPromise
+    const db = client.db()
+
+    // Create an import status record
+    const importId = new ObjectId()
+    
+    // Create initial status record
+    await db.collection('project_import_status').insertOne({
+      _id: importId,
+      projectName,
+      githubUrl,
+      status: 'pending',
+      message: 'Import request received',
+      progress: 0,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    })
+
+    // Connect to Kafka if not already connected
+    await ensureProducerConnected()
+
+    // Send message to Kafka topic - use a simple string value that can be parsed on the Scala side
+    await producer.send({
+      topic: 'import_github_project_commands',
+      messages: [
+        {
+          key: importId.toString(),
+          // Send as plain string that will be parsed on the server side
+          value: JSON.stringify({
+            project_name: projectName,
+            github_url: githubUrl,
+            project_context: projectContext || '',
+            timestamp: Date.now().toString(),
+            import_id: importId.toString()
+          })
+        }
+      ]
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: 'GitHub project import started',
+      importId: importId.toString()
+    })
+  } catch (e) {
+    console.error('Error importing GitHub project:', e)
+    return NextResponse.json(
+      { error: 'Failed to import GitHub project' },
+      { status: 500 }
+    )
+  }
+}

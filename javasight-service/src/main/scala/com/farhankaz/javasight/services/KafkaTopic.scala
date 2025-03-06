@@ -5,6 +5,7 @@ sealed trait KafkaTopic
 object KafkaTopics {
     // commands
   case object ImportProjectCommands extends KafkaTopic { override def toString = "import_project_commands" }
+  case object ImportGithubProjectCommands extends KafkaTopic { override def toString = "import_github_project_commands" }
   case object ImportMavenProjectCommands extends KafkaTopic { override def toString = "import_maven_project_commands" }
   case object ImportModuleCommands extends KafkaTopic { override def toString = "import_module_commands" }
   case object ScanModuleDirectoryCommands extends KafkaTopic { override def toString = "scan_module_directory_commands" }

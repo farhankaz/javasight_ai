@@ -5,6 +5,13 @@ package com.farhankaz.javasight.model;
 
 //Commands
 
+message ImportGithubProjectCommand {
+  string project_name = 1;
+  string github_url = 2;
+  string project_context = 3;
+  int64 timestamp = 4;
+}
+
 message ImportProjectCommand {
   string project_name = 1;
   string project_location = 2;

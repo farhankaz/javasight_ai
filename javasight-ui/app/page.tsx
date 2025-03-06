@@ -2,7 +2,8 @@
 
 import { Navbar } from './components/Navbar'
 import { ProjectCard } from './components/ProjectCard'
-import { useEffect, useState } from 'react'
+import ImportGithubProjectModal from './components/ImportGithubProjectModal'
+import { useEffect, useState, useCallback } from 'react'
 
 interface Project {
   _id: string;
@@ -56,19 +57,26 @@ async function getProjects() {
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [showImportModal, setShowImportModal] = useState(false)
+
+  const fetchProjects = useCallback(async () => {
+    try {
+      const data = await getProjects()
+      setProjects(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch projects')
+    }
+  }, [])
 
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const data = await getProjects()
-        setProjects(data)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch projects')
-      }
-    }
     fetchProjects()
-  }, [])
+  }, [fetchProjects])
   
+  const handleImportSuccess = useCallback(() => {
+    // Refresh the projects list after successful import
+    fetchProjects()
+  }, [fetchProjects])
+
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -84,7 +92,18 @@ export default function Home() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
       <main className="mx-auto max-w-7xl px-4 py-8">
-        <h1 className="mb-8 text-3xl font-bold text-gray-900">Java Projects Analysis</h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Java Projects</h1>
+          <button 
+            onClick={() => setShowImportModal(true)}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            Add Project
+          </button>
+        </div>
         
         <div className="grid gap-6 sm:grid-cols-1 lg:grid-cols-2">
           {projects.map((project) => (
@@ -100,7 +119,13 @@ export default function Home() {
             />
           ))}
         </div>
+
+        <ImportGithubProjectModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onSuccess={handleImportSuccess}
+        />
       </main>
     </div>
   )
-} 
+}
