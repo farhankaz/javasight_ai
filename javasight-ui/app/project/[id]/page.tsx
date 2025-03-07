@@ -62,7 +62,7 @@ export default function ProjectPage({ params }: PageProps) {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeSuccess, setAnalyzeSuccess] = useState<string | null>(null);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
-  const [showFullDescription, setShowFullDescription] = useState(false);
+  const [showFullDescription, setShowFullDescription] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const resolvedParams = use(params);

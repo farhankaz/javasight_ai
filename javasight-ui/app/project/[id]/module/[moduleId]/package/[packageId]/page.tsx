@@ -96,10 +96,12 @@ export default function PackageDetailsPage({
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-white rounded-lg p-6 shadow-sm">
+              <DocumentDuplicateIcon className="h-5 w-5 text-gray-500" />
               <h3 className="text-sm font-medium text-gray-500">Files</h3>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{packageDetails.metrics?.fileCount.toLocaleString() || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-6 shadow-sm">
+              <CodeBracketIcon className="h-5 w-5 text-gray-500" />
               <h3 className="text-sm font-medium text-gray-500">Lines of Code</h3>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{packageDetails.metrics?.linesOfCode.toLocaleString() || 0}</p>
             </div>

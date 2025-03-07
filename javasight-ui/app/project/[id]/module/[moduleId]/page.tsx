@@ -47,7 +47,7 @@ export default function ModulePage({ params }: { params: Promise<{ id: string, m
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showFullDescription, setShowFullDescription] = useState(false);
+  const [showFullDescription, setShowFullDescription] = useState(true);
   const [analyzeSuccess, setAnalyzeSuccess] = useState<string | null>(null);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
