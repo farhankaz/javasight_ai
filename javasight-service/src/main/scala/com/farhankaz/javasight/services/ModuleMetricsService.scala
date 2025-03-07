@@ -16,6 +16,7 @@ import akka.stream.ActorAttributes
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import akka.kafka.ConsumerMessage
+import org.bson.types.ObjectId
 
 class ModuleMetricsService(
     config: ConfigurationLoader,
@@ -33,6 +34,7 @@ class ModuleMetricsService(
   private val metricsFailures = metricsRegistry.counter(s"${config.env}_javasight_module_metrics_failures")
   private val metricsCollection = database.getCollection("java_modules_metrics")
   private val packageMetricsCollection = database.getCollection("java_packages_metrics")
+  private val modulesCollection = database.getCollection("java_modules")
 
   protected override def startService(): Consumer.DrainingControl[Done] = {
     Consumer
@@ -71,46 +73,86 @@ class ModuleMetricsService(
   private def processModuleMetrics(event: ModuleMetricsEvent): Future[Unit] = {
     logger.info(s"Processing module metrics for module ${event.moduleId}")
     
+    // Get the module document to extract analysisTokenCount
+    val moduleDocFuture = modulesCollection
+      .find(equal("_id", new ObjectId(event.moduleId)))
+      .first()
+      .toFutureOption()
+    
+    // Aggregate package metrics
     val pipeline = Seq(
       `match`(equal("moduleId", event.moduleId)),
       group("$moduleId",
         sum("packageCount", 1),
         sum("totalFiles", "$fileCount"),
-        sum("totalLinesOfCode", "$linesOfCode")
+        sum("totalLinesOfCode", "$linesOfCode"),
+        sum("combinedAnalysisTokenCount", "$combinedAnalysisTokenCount"),
+        sum("combinedCodeTokenCount", "$codeTokenCount"),
       )
     )
 
-    packageMetricsCollection
+    val packageMetricsFuture = packageMetricsCollection
       .aggregate(pipeline)
       .headOption()
-      .map {
-        case Some(doc) => {
-          val metrics = Document(
-            "moduleId" -> event.moduleId,
-            "projectId" -> event.projectId,
-            "packageCount" -> doc.getInteger("packageCount", 0),
-            "fileCount" -> doc.getInteger("totalFiles", 0),
-            "linesOfCode" -> doc.getInteger("totalLinesOfCode", 0),
-            "timestamp" -> System.currentTimeMillis()
-          )
+    
+    // Combine results from both futures
+    for {
+      moduleDocOpt <- moduleDocFuture
+      packageMetricsOpt <- packageMetricsFuture
+      _ <- {
+        // Extract the module's own analysisTokenCount, default to 0 if not found
+        val moduleAnalysisTokenCount: Int = moduleDocOpt
+          .flatMap(doc => Option(doc.getInteger("analysisTokenCount")))
+          .map(_.toInt)
+          .getOrElse(0)
+
           
-          metricsCollection.insertOne(metrics).toFuture()
-        }
-        case None => {
-          // No packages found for module, insert zero metrics
-          val metrics = Document(
-            "moduleId" -> event.moduleId,
-            "projectId" -> event.projectId,
-            "packageCount" -> 0,
-            "fileCount" -> 0,
-            "linesOfCode" -> 0,
-            "timestamp" -> System.currentTimeMillis()
-          )
-          
-          metricsCollection.insertOne(metrics).toFuture()
+        
+        logger.debug(s"Module ${event.moduleId} analysisTokenCount: $moduleAnalysisTokenCount")
+        
+        packageMetricsOpt match {
+          case Some(doc) => {
+            // Get packages combined analysis token count
+            val packagesCombinedAnalysisTokenCount: Int = doc.getInteger("combinedAnalysisTokenCount", 0)
+            
+            // Calculate the true combined analysis token count
+            val trueCombinedAnalysisTokenCount = moduleAnalysisTokenCount + packagesCombinedAnalysisTokenCount
+            
+            logger.debug(s"Module ${event.moduleId} combined token count calculation: $moduleAnalysisTokenCount (module) + $packagesCombinedAnalysisTokenCount (packages) = $trueCombinedAnalysisTokenCount")
+            
+            // Create document with proper types
+            val metrics = Document(
+              "moduleId" -> event.moduleId,
+              "projectId" -> event.projectId,
+              "packageCount" -> doc.getInteger("packageCount", 0),
+              "fileCount" -> doc.getInteger("totalFiles", 0),
+              "linesOfCode" -> doc.getInteger("totalLinesOfCode", 0),
+              "moduleAnalysisTokenCount" -> moduleAnalysisTokenCount,
+              "combinedAnalysisTokenCount" -> trueCombinedAnalysisTokenCount,
+              "combinedCodeTokenCount" -> doc.getInteger("combinedCodeTokenCount", 0),
+              "timestamp" -> System.currentTimeMillis()
+            )
+
+            metricsCollection.insertOne(metrics).toFuture()
+          }
+          case None => {
+            // No packages found for module, only use module's own analysis token count
+            val metrics = Document(
+              "moduleId" -> event.moduleId,
+              "projectId" -> event.projectId,
+              "packageCount" -> 0,
+              "fileCount" -> 0,
+              "linesOfCode" -> 0,
+              "moduleAnalysisTokenCount" -> moduleAnalysisTokenCount,
+              "combinedAnalysisTokenCount" -> moduleAnalysisTokenCount,
+              "combinedCodeTokenCount" -> 0,
+              "timestamp" -> System.currentTimeMillis()
+            )
+            
+            metricsCollection.insertOne(metrics).toFuture()
+          }
         }
       }
-      .flatten
-      .map(_ => ())
+    } yield ()
   }
 } 
