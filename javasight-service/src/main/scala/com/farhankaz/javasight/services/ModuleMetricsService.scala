@@ -127,7 +127,6 @@ class ModuleMetricsService(
               "packageCount" -> doc.getInteger("packageCount", 0),
               "fileCount" -> doc.getInteger("totalFiles", 0),
               "linesOfCode" -> doc.getInteger("totalLinesOfCode", 0),
-              "moduleAnalysisTokenCount" -> moduleAnalysisTokenCount,
               "combinedAnalysisTokenCount" -> trueCombinedAnalysisTokenCount,
               "combinedCodeTokenCount" -> doc.getInteger("combinedCodeTokenCount", 0),
               "timestamp" -> System.currentTimeMillis()
@@ -143,7 +142,6 @@ class ModuleMetricsService(
               "packageCount" -> 0,
               "fileCount" -> 0,
               "linesOfCode" -> 0,
-              "moduleAnalysisTokenCount" -> moduleAnalysisTokenCount,
               "combinedAnalysisTokenCount" -> moduleAnalysisTokenCount,
               "combinedCodeTokenCount" -> 0,
               "timestamp" -> System.currentTimeMillis()
