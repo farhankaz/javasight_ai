@@ -45,21 +45,27 @@ export async function GET(
         filePath: 1,
         linesOfCode: 1,
         shortAnalysis: 1,
+        analysisTokenCount: 1,
+        codeTokenCount: 1,
         _id: 1
       })
       .toArray();
 
     // Try to get package metrics
-    let packageMetrics: { fileCount?: number; linesOfCode?: number } = {};
+    let packageMetrics: { fileCount?: number; linesOfCode?: number, combinedAnalysisTokenCount?: number, codeTokenCount?: number } = {};
     try {
       const metricsDoc = await db.collection('java_packages_metrics').findOne(
-        { package_id: packageId }
+        { packageId: packageId }
       );
-      
+      console.log('Package Metrics:', metricsDoc);
       if (metricsDoc) {
+        console.log('Metrics:', metricsDoc);
         packageMetrics = {
           fileCount: metricsDoc.fileCount,
-          linesOfCode: metricsDoc.linesOfCode
+          linesOfCode: metricsDoc.linesOfCode,
+          combinedAnalysisTokenCount: metricsDoc.combinedAnalysisTokenCount,
+          codeTokenCount: metricsDoc.codeTokenCount
+          
         };
       }
     } catch (error) {
@@ -82,13 +88,17 @@ export async function GET(
       linesOfCode: linesOfCode,
       metrics: {
         fileCount: fileCount,
-        linesOfCode: linesOfCode
+        linesOfCode: linesOfCode,
+        combinedAnalysisTokenCount: packageMetrics.combinedAnalysisTokenCount,
+        codeTokenCount: packageMetrics.codeTokenCount
       },
       files: files.map(file => ({
         id: file._id.toString(), // Fixed toString function call
         name: file.filePath.split('/').pop(),
         linesOfCode: file.linesOfCode,
-        description: file.shortAnalysis || ''
+        description: file.shortAnalysis || '',
+        analysisTokenCount: file.analysisTokenCount || 0,
+        codeTokenCount: file.codeTokenCount || 0
       }))
     };
 

@@ -26,6 +26,8 @@ interface Metrics {
     packageCount?: number;
     fileCount?: number;
     linesOfCode?: number;
+    combinedAnalysisTokenCount?: number;
+    combinedCodeTokenCount?: number;
 }
 
 interface ProjectMetricsProps {
@@ -38,7 +40,7 @@ export default function ProjectMetrics({ metrics }: ProjectMetricsProps) {
     }
 
     return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
             <div className="bg-white p-4 rounded-lg shadow">
                 <h3 className="text-sm font-medium text-gray-500">Modules</h3>
                 <p className="text-2xl font-semibold">{metrics.moduleCount || 0}</p>
@@ -55,6 +57,14 @@ export default function ProjectMetrics({ metrics }: ProjectMetricsProps) {
                 <h3 className="text-sm font-medium text-gray-500">Lines of Code</h3>
                 <p className="text-2xl font-semibold">{metrics.linesOfCode?.toLocaleString() || 0}</p>
             </div>
+            <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="text-sm font-medium text-gray-500">Analysis Tokens</h3>
+                <p className="text-2xl font-semibold">{metrics.combinedAnalysisTokenCount?.toLocaleString() || 0}</p>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="text-sm font-medium text-gray-500">Code Tokens</h3>
+                <p className="text-2xl font-semibold">{metrics.combinedCodeTokenCount?.toLocaleString() || 0}</p>
+            </div>                        
         </div>
     )
 } 

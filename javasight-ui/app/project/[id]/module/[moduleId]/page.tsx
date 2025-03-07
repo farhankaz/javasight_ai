@@ -16,6 +16,8 @@ interface Package {
   metrics?: {
     fileCount: number;
     linesOfCode: number;
+    codeTokenCount?: number;
+    combinedAnalysisTokenCount?: number;
     // add other metric fields as needed
   };
 }
@@ -35,6 +37,8 @@ interface ModuleMetrics {
   packageCount: number;
   fileCount: number;
   linesOfCode: number;
+  combinedAnalysisTokenCount?: number;
+  combinedCodeTokenCount?: number;
 }
 export default function ModulePage({ params }: { params: Promise<{ id: string, moduleId: string }> }) {
   const resolvedParams = use(params);
@@ -186,7 +190,7 @@ export default function ModulePage({ params }: { params: Promise<{ id: string, m
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="bg-white rounded-lg p-6 shadow-sm">
               <h3 className="text-sm font-medium text-gray-500">Packages</h3>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{module.metrics?.packageCount.toLocaleString() || 0}</p>
@@ -199,6 +203,14 @@ export default function ModulePage({ params }: { params: Promise<{ id: string, m
               <h3 className="text-sm font-medium text-gray-500">Lines of Code</h3>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{module.metrics?.linesOfCode.toLocaleString() || 0}</p>
             </div>
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <h3 className="text-sm font-medium text-gray-500">Analysis Tokens</h3>
+              <p className="mt-2 text-3xl font-bold text-indigo-600">{module.metrics?.combinedAnalysisTokenCount?.toLocaleString() || 0}</p>
+            </div>
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <h3 className="text-sm font-medium text-gray-500">Code Tokens</h3>
+              <p className="mt-2 text-3xl font-bold text-indigo-600">{module.metrics?.combinedCodeTokenCount?.toLocaleString() || 0}</p>
+            </div>                        
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-6">
@@ -209,6 +221,9 @@ export default function ModulePage({ params }: { params: Promise<{ id: string, m
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Package Name</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Files</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lines of Code</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Analysis Tokens</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code Tokens</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -225,6 +240,9 @@ export default function ModulePage({ params }: { params: Promise<{ id: string, m
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pkg.metrics?.fileCount || 0}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pkg.metrics?.linesOfCode || 0}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pkg.metrics?.combinedAnalysisTokenCount || 0 || 0}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{pkg.metrics?.codeTokenCount || 0}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{pkg.analysis}</td>
                     </tr>
                   ))}
                 </tbody>

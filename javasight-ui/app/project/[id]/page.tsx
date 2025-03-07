@@ -26,6 +26,8 @@ interface Module {
     packageCount: number;
     fileCount: number;
     linesOfCode: number;
+    combinedAnalysisTokenCount?: number;
+    combinedCodeTokenCount?: number;
   } | null;
 }
 
@@ -44,6 +46,8 @@ interface Project {
     packageCount: number;
     fileCount: number;
     linesOfCode: number;
+    combinedCodeTokenCount?: number;
+    combinedAnalysisTokenCount?: number;
   } | null;
   modules: Module[];
 }

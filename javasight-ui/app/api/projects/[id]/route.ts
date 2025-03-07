@@ -42,12 +42,6 @@ export async function GET(
       .sort({ timestamp: -1 })
       .toArray();
 
-    // For debugging
-    console.log('Found project:', project);
-    console.log('Found project metrics:', projectMetrics);
-    console.log('Found modules:', modules);
-    console.log('Found module metrics:', moduleMetrics);
-
     // Combine modules with their metrics
     const modulesWithMetrics = modules.map(module => {
       const metrics = moduleMetrics.find(m => m.moduleId === module._id.toString());
