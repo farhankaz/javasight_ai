@@ -279,10 +279,10 @@ class ModuleAnalysisService(
         val event = PackageAnalyzedEvent.parseFrom(msg.record.value())
         // Only process events with no parent package (root packages)
         if (event.parentPackageId.isEmpty) {
-          logger.trace(s"Received root package analyzed event for module ${event.moduleId}")
+          logger.trace(s"Received root package analyzed event for module ${event.packageName} - ${event.moduleId} - project ${event.projectId}")
           (msg, event.moduleId, event.projectId)
         } else {
-          logger.trace(s"Received non-root package analyzed event for module ${event.moduleId}")
+          logger.trace(s"Received non-root package analyzed event for module ${event.packageName}- ${event.moduleId} - project ${event.projectId}") 
           // Skip non-root packages
           (msg, "", "")
         }

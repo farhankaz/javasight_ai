@@ -217,6 +217,8 @@ class PackageAnalysisService(
             ).toFuture()
             Some(PackageAnalyzedEvent(
               packageId = packageId,
+              packageName = packageName,
+              projectId = projectId,
               moduleId = moduleId,
               parentPackageId = Option(packageDoc.getString("parentPackageId")),
               timestamp = System.currentTimeMillis()

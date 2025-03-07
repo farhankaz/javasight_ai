@@ -1,3 +1,4 @@
+
 package com.farhankaz.javasight.services
 
 import akka.Done
@@ -25,6 +26,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 import scala.concurrent.duration._
 import akka.kafka.ConsumerMessage
+import org.bson.types.ObjectId
 
 class PackageMetricsService(
     config: ConfigurationLoader,
@@ -42,20 +44,21 @@ class PackageMetricsService(
   private val metricsFailures = metricsRegistry.counter(s"${config.env}_javasight_package_metrics_failures")
   private val metricsCollection = database.getCollection("java_packages_metrics")
   private val filesCollection = database.getCollection("java_files")
+  private val packagesCollection = database.getCollection("java_packages")
 
   protected override def startService(): Consumer.DrainingControl[Done] = {
     Consumer
       .committableSource(consumerSettings, Subscriptions.topics(kafkaTopic))
       .mapAsync(1) { msg =>
-        logger.info(s"Processing package metrics for package ${msg.record.value()}")
         val event = PackageAnalyzedEvent.parseFrom(msg.record.value())
+        logger.info(s"Processing package metrics for package ${event.packageName}")
         processPackageMetrics(event)
           .map { _ =>
             metricsCalculated.increment()
             msg.committableOffset
           }
           .recover { case ex =>
-            logger.error(s"Failed to process metrics for package ${event.packageId}", ex)
+            logger.error(s"Failed to process metrics for package ${event.packageName}", ex)
             metricsFailures.increment()
             recordProcessingError()
             msg.committableOffset
@@ -80,45 +83,85 @@ class PackageMetricsService(
 
   private def processPackageMetrics(event: PackageAnalyzedEvent): Future[Unit] = {
     logger.info(s"Processing package metrics for package ${event.packageId}")
-    val pipeline = Seq(
+    
+    // Pipeline to calculate file metrics (count, lines of code, and analysis token count)
+    val filesPipeline = Seq(
       MongoAggregates.`match`(equal("packageId", event.packageId)),
-      MongoAggregates.group("$packageId", 
+      MongoAggregates.group("$packageId",
         sum("fileCount", 1),
-        sum("linesOfCode", "$linesOfCode")
+        sum("linesOfCode", "$linesOfCode"),
+        sum("filesAnalysisTokenCount", "$analysisTokenCount"),
+        sum("codeTokenCount", "$codeTokenCount")
       )
     )
 
-    filesCollection
-      .aggregate(pipeline)
+    // Get package's own analysisTokenCount
+    val packageFuture = packagesCollection
+      .find(equal("_id", new ObjectId(event.packageId)))
+      .first()
+      .toFuture()
+      
+    // Get aggregate metrics for files in the package
+    val fileMetricsFuture = filesCollection
+      .aggregate(filesPipeline)
       .headOption()
-      .map {
-        case Some(doc) => {
-          val metrics = Document(
-            "packageId" -> event.packageId,
-            "moduleId" -> event.moduleId,
-            "projectId" -> event.projectId,
-            "fileCount" -> doc.getInteger("fileCount", 0),
-            "linesOfCode" -> doc.getInteger("linesOfCode", 0),
-            "timestamp" -> System.currentTimeMillis()
-          )
+      
+    // Combine the results
+    for {
+      packageDoc <- packageFuture
+      fileMetricsOption <- fileMetricsFuture
+      _ <- {
+        // Extract package analysisTokenCount, default to 0 if not found
+        val packageAnalysisTokenCountOpt: Option[Int] = Option(packageDoc)
+          .flatMap(doc => Option(doc.getInteger("analysisTokenCount")))
           
-          metricsCollection.insertOne(metrics).toFuture()
+        val packageAnalysisTokenCount: Int = packageAnalysisTokenCountOpt.getOrElse(0)
+        
+        val insertFuture = fileMetricsOption match {
+          case Some(fileMetrics) => {
+            // Extract file metrics
+            val fileCount = fileMetrics.getInteger("fileCount", 0)
+            val linesOfCode = fileMetrics.getInteger("linesOfCode", 0)
+            val filesAnalysisTokenCount: Int = fileMetrics.getInteger("filesAnalysisTokenCount", 0)
+            val codeTokenCount: Int = fileMetrics.getInteger("codeTokenCount", 0)
+            
+            // Calculate combined analysis token count
+            val combinedAnalysisTokenCount = packageAnalysisTokenCount + filesAnalysisTokenCount
+            
+            val metrics = Document(
+              "packageId" -> event.packageId,
+              "moduleId" -> event.moduleId,
+              "projectId" -> event.projectId,
+              "fileCount" -> fileCount,
+              "linesOfCode" -> linesOfCode,
+              "packageAnalysisTokenCount" -> packageAnalysisTokenCount,
+              "combinedAnalysisTokenCount" -> combinedAnalysisTokenCount,
+              "codeTokenCount" -> codeTokenCount,
+              "timestamp" -> System.currentTimeMillis()
+            )
+            
+            metricsCollection.insertOne(metrics).toFuture()
+          }
+          case None => {
+            // No files found for package, insert metrics with only package analysis tokens
+            val metrics = Document(
+              "packageId" -> event.packageId,
+              "moduleId" -> event.moduleId,
+              "projectId" -> event.projectId,
+              "fileCount" -> 0,
+              "linesOfCode" -> 0,
+              "packageAnalysisTokenCount" -> packageAnalysisTokenCount,
+              "combinedAnalysisTokenCount" -> packageAnalysisTokenCount,
+              "codeTokenCount" -> 0,
+              "timestamp" -> System.currentTimeMillis()
+            )
+            
+            metricsCollection.insertOne(metrics).toFuture()
+          }
         }
-        case None => {
-          // No files found for package, insert zero metrics
-          val metrics = Document(
-            "packageId" -> event.packageId,
-            "moduleId" -> event.moduleId, 
-            "projectId" -> event.projectId,
-            "fileCount" -> 0,
-            "linesOfCode" -> 0,
-            "timestamp" -> System.currentTimeMillis()
-          )
-          
-          metricsCollection.insertOne(metrics).toFuture()
-        }
+        
+        insertFuture
       }
-      .flatten
-      .map(_ => ())
+    } yield ()
   }
 } 
