@@ -5,7 +5,7 @@ import Breadcrumb from '@/app/components/Breadcrumb';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'react-hot-toast';
-import { FolderIcon } from '@heroicons/react/24/outline';
+import { FolderIcon, DocumentDuplicateIcon, CodeBracketIcon, SparklesIcon, CubeIcon } from '@heroicons/react/24/outline';
 
 interface Package {
   _id: string;
@@ -192,23 +192,38 @@ export default function ModulePage({ params }: { params: Promise<{ id: string, m
 
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="bg-white rounded-lg p-6 shadow-sm">
-              <h3 className="text-sm font-medium text-gray-500">Packages</h3>
+              <div className="flex items-center gap-1">
+                <FolderIcon className="h-5 w-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-500">Packages</h3>
+              </div>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{module.metrics?.packageCount.toLocaleString() || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-6 shadow-sm">
-              <h3 className="text-sm font-medium text-gray-500">Files</h3>
+              <div className="flex items-center gap-1">
+                <DocumentDuplicateIcon className="h-5 w-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-500">Files</h3>
+              </div>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{module.metrics?.fileCount.toLocaleString() || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-6 shadow-sm">
-              <h3 className="text-sm font-medium text-gray-500">Lines of Code</h3>
+              <div className="flex items-center gap-1">
+                <CodeBracketIcon className="h-5 w-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-500">Lines of Code</h3>
+              </div>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{module.metrics?.linesOfCode.toLocaleString() || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-6 shadow-sm">
-              <h3 className="text-sm font-medium text-gray-500">Analysis Tokens</h3>
+              <div className="flex items-center gap-1">
+                <SparklesIcon className="h-5 w-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-500">Analysis AI Tokens</h3>
+              </div>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{module.metrics?.combinedAnalysisTokenCount?.toLocaleString() || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-6 shadow-sm">
-              <h3 className="text-sm font-medium text-gray-500">Code Tokens</h3>
+              <div className="flex items-center gap-1">
+                <SparklesIcon className="h-5 w-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-500">Code AI Tokens</h3>
+              </div>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{module.metrics?.combinedCodeTokenCount?.toLocaleString() || 0}</p>
             </div>                        
           </div>

@@ -101,14 +101,14 @@ export default function PackageDetailsPage({
             <div className="bg-white rounded-lg p-6 shadow-sm">
               <div className="flex items-center gap-1">
                 <SparklesIcon className="h-5 w-5 text-gray-500" />
-                <h3 className="text-sm font-medium text-gray-500">Analysis Tokens</h3>
+                <h3 className="text-sm font-medium text-gray-500">Analysis AI Tokens</h3>
               </div>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{packageDetails.metrics?.combinedAnalysisTokenCount?.toLocaleString() || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-6 shadow-sm">
               <div className="flex items-center gap-1">
                 <SparklesIcon className="h-5 w-5 text-gray-500" />
-                <h3 className="text-sm font-medium text-gray-500">Code Tokens</h3>
+                <h3 className="text-sm font-medium text-gray-500">Code AI Tokens</h3>
               </div>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{packageDetails.metrics?.codeTokenCount?.toLocaleString() || 0}</p>
             </div>

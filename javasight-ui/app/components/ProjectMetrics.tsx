@@ -1,25 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { FileIcon, CodeIcon, PackageIcon, ModuleIcon } from '@heroicons/react/24/outline';
+import { DocumentDuplicateIcon, CodeBracketIcon, SparklesIcon, CubeIcon, FolderIcon } from '@heroicons/react/24/outline';
 
-interface MetricCardProps {
-  title: string;
-  value: string | number;
-  icon?: React.ComponentType<{ className?: string }>;
-}
-
-function MetricCard({ title, value, icon: Icon }: MetricCardProps) {
-  return (
-    <div className="bg-white rounded-lg p-6 shadow-sm flex items-center">
-      {Icon && <Icon className="w-6 h-6 text-gray-400 mr-4" />}
-      <div>
-        <h3 className="text-gray-600 text-sm mb-2">{title}</h3>
-        <p className="text-4xl font-semibold text-indigo-600">{value}</p>
-      </div>
-    </div>
-  );
-}
 
 interface Metrics {
     moduleCount?: number;
@@ -40,31 +23,49 @@ export default function ProjectMetrics({ metrics }: ProjectMetricsProps) {
     }
 
     return (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-white p-4 rounded-lg shadow">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <div className="flex items-center gap-1">
+                <CubeIcon className="h-5 w-5 text-gray-500" />
                 <h3 className="text-sm font-medium text-gray-500">Modules</h3>
-                <p className="text-2xl font-semibold">{metrics.moduleCount || 0}</p>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-indigo-600">{metrics.moduleCount?.toLocaleString() || 0}</p>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow">
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <div className="flex items-center gap-1">
+                <FolderIcon className="h-5 w-5 text-gray-500" />
                 <h3 className="text-sm font-medium text-gray-500">Packages</h3>
-                <p className="text-2xl font-semibold">{metrics.packageCount || 0}</p>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-indigo-600">{metrics.packageCount?.toLocaleString() || 0}</p>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow">
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <div className="flex items-center gap-1">
+                <DocumentDuplicateIcon className="h-5 w-5 text-gray-500" />
                 <h3 className="text-sm font-medium text-gray-500">Files</h3>
-                <p className="text-2xl font-semibold">{metrics.fileCount || 0}</p>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-indigo-600">{metrics.fileCount?.toLocaleString() || 0}</p>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow">
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <div className="flex items-center gap-1">
+                <CodeBracketIcon className="h-5 w-5 text-gray-500" />
                 <h3 className="text-sm font-medium text-gray-500">Lines of Code</h3>
-                <p className="text-2xl font-semibold">{metrics.linesOfCode?.toLocaleString() || 0}</p>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-indigo-600">{metrics.linesOfCode?.toLocaleString() || 0}</p>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow">
-                <h3 className="text-sm font-medium text-gray-500">Analysis Tokens</h3>
-                <p className="text-2xl font-semibold">{metrics.combinedAnalysisTokenCount?.toLocaleString() || 0}</p>
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <div className="flex items-center gap-1">
+                <SparklesIcon className="h-5 w-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-500">Analysis AI Tokens</h3>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-indigo-600">{metrics.combinedAnalysisTokenCount?.toLocaleString() || 0}</p>
             </div>
-            <div className="bg-white p-4 rounded-lg shadow">
-                <h3 className="text-sm font-medium text-gray-500">Code Tokens</h3>
-                <p className="text-2xl font-semibold">{metrics.combinedCodeTokenCount?.toLocaleString() || 0}</p>
+            <div className="bg-white rounded-lg p-6 shadow-sm">
+              <div className="flex items-center gap-1">
+                <SparklesIcon className="h-5 w-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-500">Code AI Tokens</h3>
+              </div>
+              <p className="mt-2 text-3xl font-bold text-indigo-600">{metrics.combinedCodeTokenCount?.toLocaleString() || 0}</p>
             </div>                        
         </div>
     )
-} 
+}
