@@ -15,7 +15,8 @@ import io.micrometer.core.instrument.MeterRegistry
 import org.bson.types.ObjectId
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Files, Paths, Path}
+import java.io.File
 import scala.sys.process._
 import com.farhankaz.javasight.utils.ConfigurationLoader
 import com.farhankaz.javasight.model.kafka.{ImportGithubProjectCommand, Module, ProjectImportedEvent}
@@ -49,6 +50,13 @@ class GithubProjectImportService(
   private val timestampPattern = """"timestamp"\s*:\s*"(\d+)"""".r
   private val importIdPattern = """"import_id"\s*:\s*"([^"]+)"""".r
   
+  // Project type detection patterns
+  private val mavenPattern = "pom.xml"
+  private val gradlePattern = "build.gradle"
+  private val gradleKtsPattern = "build.gradle.kts"
+  private val antPattern = "build.xml"
+  private val sbtPattern = "build.sbt"
+  
   protected override def startService(): Consumer.DrainingControl[Done] = {
     Consumer
       .committableSource(consumerSettings, Subscriptions.topics(kafkaTopic))
@@ -72,51 +80,51 @@ class GithubProjectImportService(
           val timestamp = extract(timestampPattern, jsonStr).map(_.toLong).getOrElse(
             System.currentTimeMillis())
             
-          val importId = extract(importIdPattern, jsonStr)
+          // Extract import ID - this is required for proper tracking
+          val importId = extract(importIdPattern, jsonStr).getOrElse(
+            throw new Exception("Missing required field: import_id"))
           
           // Log parsed data
-          logger.info(s"Parsed GitHub import command: project=$projectName, url=$githubUrl")
-          if (importId.isDefined) {
-            logger.info(s"Import ID from message: ${importId.get}")
-            
-            // If import ID was provided, create the import status record
-            importId.foreach { id =>
-              try {
-                val objectId = new ObjectId(id)
-                updateImportStatus(
-                  objectId,
-                  "in_progress",
-                  "Processing import...",
-                  5
-                )
-              } catch {
-                case e: Exception => logger.warn(s"Invalid import ID format: $id", e)
-              }
-            }
-          }
+          logger.info(s"Parsed GitHub import command: project=$projectName, url=$githubUrl, importId=$importId")
           
-          // Create command object
-          ImportGithubProjectCommand(
-            projectName = projectName,
-            githubUrl = githubUrl,
-            projectContext = projectContext,
-            timestamp = timestamp
-          )
+          try {
+            val objectId = new ObjectId(importId)
+            updateImportStatus(
+              objectId,
+              "in_progress",
+              "Processing import...",
+              5
+            )
+            
+            // Create command object with import ID
+            (objectId, ImportGithubProjectCommand(
+              projectName = projectName,
+              githubUrl = githubUrl,
+              projectContext = projectContext,
+              timestamp = timestamp
+            ))
+          } catch {
+            case e: Exception => 
+              logger.error(s"Invalid import ID format: $importId", e)
+              throw new Exception(s"Invalid import ID format: $importId")
+          }
         } catch {
           case e: Exception =>
             logger.error(s"Failed to parse JSON message: ${e.getMessage}", e)
             throw e
         }
       }
-      .mapAsync(1)(processGithubImport)
-      .map { case (projectId, command, clonePath) =>
+      .mapAsync(1) { case (importId, command) =>
+        processGithubImport(importId, command)
+      }
+      .map { case (projectId, command, clonePath, projectType) =>
         new ProducerRecord[Array[Byte], Array[Byte]](
           KafkaTopics.ProjectImportedEvents.toString(),
           ProjectImportedEvent(
             projectId.toHexString,
             command.projectName,
             clonePath,
-            parseProjectModules(projectId.toHexString, clonePath),
+            parseProjectModules(projectId.toHexString, clonePath, projectType),
             System.currentTimeMillis()
           ).toByteArray
         )
@@ -132,10 +140,7 @@ class GithubProjectImportService(
     pattern.findFirstMatchIn(json).map(_.group(1))
   }
 
-  private def processGithubImport(command: ImportGithubProjectCommand): Future[(ObjectId, ImportGithubProjectCommand, String)] = {
-    // Create a new ObjectId for the import
-    val importId = new ObjectId()
-    
+  private def processGithubImport(importId: ObjectId, command: ImportGithubProjectCommand): Future[(ObjectId, ImportGithubProjectCommand, String, String)] = {
     logger.info(s"Processing GitHub import for ${command.projectName} from ${command.githubUrl}, import ID: ${importId.toHexString}")
     
     // Update status to started
@@ -145,8 +150,8 @@ class GithubProjectImportService(
       "Initiating GitHub repository clone",
       10
     ).flatMap { _ =>
-      // Create project ID
-      val projectId = new ObjectId()
+      // Use the import ID as the project ID to maintain consistency
+      val projectId = importId
       val clonePath = s"$cloneBaseDir/${projectId.toHexString}"
       
       // Create directory if it doesn't exist
@@ -155,14 +160,14 @@ class GithubProjectImportService(
       // Clone GitHub repository
       cloneRepository(command.githubUrl, clonePath, importId)
         .flatMap { _ =>
-          // Validate Maven project
-          validateMavenProject(clonePath, importId)
-            .flatMap { _ =>
+          // Detect and validate project type
+          detectAndValidateProject(clonePath, importId)
+            .flatMap { projectType =>
               // Create MongoDB records
-              createProjectRecords(projectId, command, clonePath, importId)
+              createProjectRecords(projectId, command, clonePath, importId, projectType)
                 .map { _ =>
                   // Return data needed for the next step
-                  (projectId, command, clonePath)
+                  (projectId, command, clonePath, projectType)
                 }
             }
         }
@@ -209,32 +214,62 @@ class GithubProjectImportService(
     }.flatMap(identity)
   }
 
-  private def validateMavenProject(path: String, importId: ObjectId): Future[Unit] = {
-    Future {
-      updateImportStatus(importId, "in_progress", "Validating Maven project structure...", 50)
-      
-      // Check for pom.xml file
-      val pomFile = Paths.get(path, "pom.xml").toFile
-      if (!pomFile.exists() || !pomFile.isFile) {
-        throw new RuntimeException("Not a valid Maven project - pom.xml not found")
+  private def detectAndValidateProject(path: String, importId: ObjectId): Future[String] = {
+    // First update the status
+    updateImportStatus(importId, "in_progress", "Detecting project type...", 50).flatMap { _ =>
+      Future {
+        val projectRoot = new File(path)
+        
+        // Check for different build files to determine project type
+        val projectType = if (new File(projectRoot, mavenPattern).exists()) {
+          // Validate Maven project
+          try {
+            val pomFile = new File(projectRoot, mavenPattern)
+            XML.loadFile(pomFile) // Validate XML
+            "maven"
+          } catch {
+            case ex: Exception => 
+              throw new RuntimeException(s"Invalid pom.xml file: ${ex.getMessage}")
+          }
+        } else if (new File(projectRoot, gradlePattern).exists() || new File(projectRoot, gradleKtsPattern).exists()) {
+          "gradle"
+        } else if (new File(projectRoot, antPattern).exists()) {
+          "ant"
+        } else if (new File(projectRoot, sbtPattern).exists()) {
+          "sbt"
+        } else {
+          // Check if there are any Java files
+          val hasJavaFiles = Files.walk(Paths.get(path))
+            .filter(p => p.toString.endsWith(".java"))
+            .findAny()
+            .isPresent()
+            
+          if (hasJavaFiles) {
+            "java" // Plain Java project
+          } else {
+            throw new RuntimeException("Unable to determine project type. No recognized build files found and no Java files detected.")
+          }
+        }
+        
+        projectType
       }
-      
-      // Try to parse pom.xml to verify it's valid XML
-      try {
-        XML.loadFile(pomFile)
-        updateImportStatus(importId, "in_progress", "Project validated successfully", 60)
-      } catch {
-        case ex: Exception => 
-          throw new RuntimeException(s"Invalid pom.xml file: ${ex.getMessage}")
-      }
-    }.flatMap(identity)
+    }.flatMap { projectType =>
+      // Update status with detected project type
+      updateImportStatus(
+        importId, 
+        "in_progress", 
+        s"Project detected as ${projectType.toUpperCase} project", 
+        60
+      ).map(_ => projectType)
+    }
   }
 
   private def createProjectRecords(
     projectId: ObjectId,
     command: ImportGithubProjectCommand,
     clonePath: String,
-    importId: ObjectId
+    importId: ObjectId,
+    projectType: String
   ): Future[Unit] = {
     updateImportStatus(importId, "in_progress", "Importing project...", 70)
     
@@ -252,7 +287,8 @@ class GithubProjectImportService(
         "_id" -> projectId,
         "projectName" -> command.projectName,
         "projectLocation" -> clonePath,
-        "githubUrl" -> command.githubUrl
+        "githubUrl" -> command.githubUrl,
+        "projectType" -> projectType
       )).toFuture(),
       
       projectContexts.insertOne(Document(
@@ -302,21 +338,39 @@ class GithubProjectImportService(
 
   // Helper method to read README.md content from project root
   private def readReadmeFile(projectPath: String): Option[String] = {
-    val readmePath = Paths.get(projectPath, "README.md")
-    if (Files.exists(readmePath)) {
+    // Check for different README file variants (case-insensitive)
+    val readmeVariants = List(
+      "README.md", "Readme.md", "readme.md",
+      "README.txt", "Readme.txt", "readme.txt",
+      "README", "Readme", "readme"
+    )
+    
+    val readmeFile = readmeVariants
+      .map(name => Paths.get(projectPath, name))
+      .find(Files.exists(_))
+    
+    readmeFile.flatMap { path =>
       try {
-        Some(new String(Files.readAllBytes(readmePath), "UTF-8"))
+        Some(new String(Files.readAllBytes(path), "UTF-8"))
       } catch {
         case ex: Exception =>
-          logger.warn(s"Failed to read README.md: ${ex.getMessage}", ex)
+          logger.warn(s"Failed to read README file: ${ex.getMessage}", ex)
           None
       }
-    } else {
-      None
     }
   }
 
-  private def parseProjectModules(projectId: String, projectLocation: String): Seq[Module] = {
+  private def parseProjectModules(projectId: String, projectLocation: String, projectType: String): Seq[Module] = {
+    projectType match {
+      case "maven" => parseMavenModules(projectId, projectLocation)
+      case "gradle" => parseGradleModules(projectId, projectLocation)
+      case _ => 
+        // For other project types, treat the project itself as a single module
+        Seq(Module("default", projectLocation, System.currentTimeMillis()))
+    }
+  }
+  
+  private def parseMavenModules(projectId: String, projectLocation: String): Seq[Module] = {
     try {
       val pomFile = Paths.get(projectLocation, "pom.xml").toFile
       val pomXml = XML.loadFile(pomFile)
@@ -336,7 +390,49 @@ class GithubProjectImportService(
       }
     } catch {
       case ex: Exception =>
-        logger.error(s"Error parsing project modules: ${ex.getMessage}", ex)
+        logger.error(s"Error parsing Maven project modules: ${ex.getMessage}", ex)
+        // Fallback to default module
+        Seq(Module("default", projectLocation, System.currentTimeMillis()))
+    }
+  }
+  
+  private def parseGradleModules(projectId: String, projectLocation: String): Seq[Module] = {
+    try {
+      // Check for settings.gradle or settings.gradle.kts which defines modules in Gradle
+      val settingsFile = if (Files.exists(Paths.get(projectLocation, "settings.gradle"))) {
+        Paths.get(projectLocation, "settings.gradle")
+      } else if (Files.exists(Paths.get(projectLocation, "settings.gradle.kts"))) {
+        Paths.get(projectLocation, "settings.gradle.kts")
+      } else {
+        null
+      }
+      
+      if (settingsFile != null) {
+        // Simple regex to extract module names from settings.gradle
+        val includePattern = """include\s*['"](:[^'"]+)['"]""".r
+        val content = new String(Files.readAllBytes(settingsFile), "UTF-8")
+        
+        val moduleNames = includePattern.findAllMatchIn(content).map(_.group(1).substring(1)).toSeq
+        
+        if (moduleNames.nonEmpty) {
+          moduleNames.map(module =>
+            Module(
+              module,
+              s"$projectLocation/$module",
+              System.currentTimeMillis()
+            )
+          )
+        } else {
+          // If no modules found, treat the project itself as a single module
+          Seq(Module("default", projectLocation, System.currentTimeMillis()))
+        }
+      } else {
+        // No settings.gradle found, treat as single module
+        Seq(Module("default", projectLocation, System.currentTimeMillis()))
+      }
+    } catch {
+      case ex: Exception =>
+        logger.error(s"Error parsing Gradle project modules: ${ex.getMessage}", ex)
         // Fallback to default module
         Seq(Module("default", projectLocation, System.currentTimeMillis()))
     }

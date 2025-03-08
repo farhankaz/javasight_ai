@@ -73,6 +73,7 @@ class ProjectAnalysisService(
   
   private val javaModulesCollection = database.getCollection[Document]("java_modules")
   private val javaProjectsCollection = database.getCollection[Document]("projects")
+  private val importStatusCollection = database.getCollection[Document]("project_import_status")
   
   protected override def startService(): Consumer.DrainingControl[Done] = {
     val producerSink = Producer.plainSink(producerSettings)
@@ -271,14 +272,35 @@ class ProjectAnalysisService(
     projectAnalysisTokens.record(analysisTokenCount)
     totalTokenUsage.increment(analysisTokenCount.toDouble)
     
-    javaProjectsCollection.updateOne(
+    // Update project analysis
+    val projectUpdateFuture = javaProjectsCollection.updateOne(
       equal("_id", new ObjectId(projectId)),
       org.mongodb.scala.model.Updates.combine(
         set("analysis", analysis),
         set("analysisTokenCount", analysisTokenCount)
       )
-    ).toFuture().map { result =>
-      logger.info(s"Updated analysis for project $projectId")
-    }
+    ).toFuture()
+    
+    // Update import status to 100% if this project was imported from GitHub
+    val importStatusUpdateFuture = importStatusCollection.updateOne(
+      equal("_id", new ObjectId(projectId)),
+      org.mongodb.scala.model.Updates.combine(
+        set("status", "completed"),
+        set("message", "Analysis complete"),
+        set("progress", 100),
+        set("updatedAt", new java.util.Date())
+      )
+    ).toFuture()
+    
+    // Execute both updates and log results
+    Future.sequence(Seq(projectUpdateFuture, importStatusUpdateFuture))
+      .map { _ =>
+        logger.info(s"Updated analysis for project $projectId and set import status to 100%")
+      }
+      .recover {
+        case ex: Exception =>
+          logger.error(s"Error updating project analysis or import status for $projectId", ex)
+          throw ex
+      }
   }
 }

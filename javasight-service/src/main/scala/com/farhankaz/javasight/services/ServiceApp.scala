@@ -66,7 +66,6 @@ object ServiceApp extends App {
 
   def startServices(codeAnalyzer: CodeAnalyzer): Seq[Consumer.DrainingControl[Done]] =
     Seq(
-      new ProjectImportService(configLoader, prometheusRegistry, database),
       new GithubProjectImportService(configLoader, prometheusRegistry, database),
       new ModuleImportService(configLoader, prometheusRegistry, database),
       new ModuleDirectoryScanService(configLoader, prometheusRegistry, database),

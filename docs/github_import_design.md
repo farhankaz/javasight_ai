@@ -28,9 +28,9 @@
   - Optional custom project name
 
 ### 2.2. GitHub URL Validation
-- Validate GitHub URLs for correct format
-- Check repository is public and accessible
-- Verify the repository contains a pom.xml file at root level
+- Validate GitHub URLs for correct format using regex pattern
+- Repository accessibility is checked during the clone operation
+- Project type is detected and validated after successful cloning (Maven, Gradle, Ant, SBT, or plain Java)
 
 ## 3. Backend Service Modifications
 
@@ -44,6 +44,7 @@
     int64 timestamp = 4;
   }
   ```
+- Note: The import_id is not part of the proto definition but is extracted from the JSON message in the service implementation
 
 ### 3.2. Add New Kafka Topic
 - Add in `KafkaTopic.scala`:
@@ -56,10 +57,16 @@
 ### 3.3. GitHub Project Import Service
 - Create `GithubProjectImportService.scala` to:
   - Clone public GitHub repositories
-  - Validate Maven project structure
-  - Send progress updates via status collection
+  - Detect and validate project type (Maven, Gradle, Ant, SBT, or plain Java)
+  - Send progress updates via status collection with detailed progress percentages
   - Handle the project import process
   - Report detailed errors for invalid repositories
+  - Extract fields from JSON messages using regex patterns
+  - Read README.md content from cloned repository to use as project context if available
+  - Parse project modules based on project type:
+    - Maven: Parse modules from pom.xml
+    - Gradle: Parse modules from settings.gradle or settings.gradle.kts
+    - Other project types: Treat as single module
 
 ## 4. Progress Tracking System
 
@@ -100,14 +107,17 @@
 
 ## 7. Error Handling
 
-- Validate GitHub URL format before submission
-- Check repository accessibility before cloning
-- Verify pom.xml existence after cloning
+- Validate GitHub URL format before submission using regex pattern in frontend
+- Check repository accessibility during the clone operation
+- Detect and validate project type after successful cloning
+- Clean up partial clones on failure
+- Update import status with detailed error messages
 - Provide clear error messages for each failure scenario:
   - "Invalid GitHub URL format"
-  - "Repository not found or not public"
-  - "Not a valid Maven project (no pom.xml found)"
-  - "Failed to clone repository"
+  - "Git clone failed with exit code X" (when repository is not found or not public)
+  - "Invalid pom.xml file: [specific XML parsing error]" (for Maven projects)
+  - "Unable to determine project type. No recognized build files found and no Java files detected."
+  - Project-type specific validation errors
 
 ## 8. Testing Plan
 
@@ -123,48 +133,99 @@ sequenceDiagram
     participant User as User
     participant UI as JavaSight UI
     participant API as Next.js API
-    participant Kafka as Kafka Broker
+    participant ImportCmd as Kafka: import_github_project_commands
     participant GIS as GitHub Import Service
     participant Git as Git CLI
     participant MongoDB as MongoDB
-    participant PIS as Project Import Service
+    participant ImportedEvt as Kafka: project_imported_events
+    participant Analysis as Analysis Services
     participant SSE as SSE Connection
 
     User->>UI: Enter GitHub URL & submit
-    UI->>UI: Validate URL format
+    activate UI
+    UI->>UI: Validate URL format with regex
     UI->>API: POST /api/projects with GitHub URL
-    API->>MongoDB: Create initial project record
-    MongoDB-->>API: Return temporary project ID
-    API->>Kafka: Send ImportGithubProjectCommand
+    activate API
+    API->>MongoDB: Create initial import status record with _id
+    activate MongoDB
+    MongoDB-->>API: Return import ID
+    deactivate MongoDB
+    API->>ImportCmd: Send JSON message with import_id
+    activate ImportCmd
     API-->>UI: Return import ID and initial status
+    deactivate API
     UI->>SSE: Subscribe to status updates
+    activate SSE
     
-    Kafka->>GIS: Consume command
-    GIS->>MongoDB: Update status (Started cloning)
+    ImportCmd->>GIS: Consume JSON message
+    activate GIS
+    deactivate ImportCmd
+    GIS->>GIS: Extract fields using regex patterns
+    GIS->>MongoDB: Update status (Started cloning, 10%)
+    activate MongoDB
     MongoDB->>SSE: Push status update
-    SSE-->>UI: Status: "Cloning repository..."
+    deactivate MongoDB
+    SSE-->>UI: Status: "Initiating GitHub repository clone"
     
     GIS->>Git: Clone repository
+    activate Git
     Git-->>GIS: Repository cloned
-    GIS->>GIS: Validate pom.xml existence
-    GIS->>MongoDB: Update status (Validating project)
+    deactivate Git
+    GIS->>MongoDB: Update status (Cloned, 40%)
+    activate MongoDB
     MongoDB->>SSE: Push status update
-    SSE-->>UI: Status: "Validating Maven project..."
+    deactivate MongoDB
+    SSE-->>UI: Status: "Repository cloned successfully"
     
-    GIS->>MongoDB: Store project info
-    GIS->>Kafka: Send ProjectImportedEvent
-    GIS->>MongoDB: Update status (Processing started)
+    GIS->>GIS: Detect project type (Maven, Gradle, etc.)
+    GIS->>GIS: Validate project structure
+    GIS->>MongoDB: Update status (Validating project, 60%)
+    activate MongoDB
     MongoDB->>SSE: Push status update
+    deactivate MongoDB
+    SSE-->>UI: Status: "Project detected as X type"
+    
+    GIS->>GIS: Read README.md for project context
+    GIS->>GIS: Parse project modules based on project type
+    GIS->>MongoDB: Store project info and context
+    activate MongoDB
+    MongoDB-->>GIS: Confirm storage
+    GIS->>MongoDB: Update status (Importing, 70%)
+    MongoDB->>SSE: Push status update
+    deactivate MongoDB
+    SSE-->>UI: Status: "Importing project..."
+    
+    GIS->>ImportedEvt: Send ProjectImportedEvent with modules
+    activate ImportedEvt
+    GIS->>MongoDB: Update status (Processing started, 80%)
+    activate MongoDB
+    MongoDB->>SSE: Push status update
+    deactivate MongoDB
+    deactivate GIS
     SSE-->>UI: Status: "Project imported, starting analysis..."
     
-    Kafka->>PIS: Trigger regular project processing
-    PIS->>MongoDB: Update project with analysis
-    PIS->>MongoDB: Update status (Complete)
+    ImportedEvt->>Analysis: Trigger analysis services
+    activate Analysis
+    deactivate ImportedEvt
+    
+    Note over Analysis: Multiple analysis services process the project
+    
+    Analysis->>ProjectAnalysis: ModuleAnalyzedEvent (for all modules)
+    activate ProjectAnalysis
+    Note right of ProjectAnalysis: ProjectAnalysisService
+    ProjectAnalysis->>MongoDB: Update project with analysis
+    activate MongoDB
+    ProjectAnalysis->>MongoDB: Update status (Complete, 100%)
     MongoDB->>SSE: Push final status update
+    deactivate MongoDB
+    deactivate ProjectAnalysis
+    deactivate Analysis
     SSE-->>UI: Status: "Import complete"
+    deactivate SSE
     
     UI-->>User: Show success notification
     UI->>UI: Add new project to projects list
+    deactivate UI
 ```
 
 This diagram illustrates the end-to-end flow of the GitHub import process, from user input to final project analysis.
