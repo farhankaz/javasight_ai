@@ -374,10 +374,17 @@ class GithubProjectImportService(
     try {
       val pomFile = Paths.get(projectLocation, "pom.xml").toFile
       val pomXml = XML.loadFile(pomFile)
-      val modules = (pomXml \ "modules" \ "module").map(_.text)
       
-      if (modules.nonEmpty) {
-        modules.map(module =>
+      // Use XPath-style query to find all module elements that are children of modules elements
+      // The \\ operator performs a deep search for elements with the specified name
+      val allModules = (pomXml \\ "modules" \ "module").map(_.text).distinct
+      
+      if (allModules.nonEmpty) {
+        logger.info(s"Found ${allModules.size} modules in Maven project at $projectLocation")
+        // Log the discovered modules for debugging
+        allModules.foreach(module => logger.debug(s"Discovered module: $module"))
+        
+        allModules.map(module =>
           Module(
             module,
             s"$projectLocation/$module",
@@ -386,6 +393,7 @@ class GithubProjectImportService(
         )
       } else {
         // If no modules found, treat the project itself as a single module
+        logger.info(s"No modules found in Maven project at $projectLocation, treating as single module")
         Seq(Module("default", projectLocation, System.currentTimeMillis()))
       }
     } catch {

@@ -49,7 +49,7 @@ class PackageMetricsService(
   protected override def startService(): Consumer.DrainingControl[Done] = {
     Consumer
       .committableSource(consumerSettings, Subscriptions.topics(kafkaTopic))
-      .mapAsync(1) { msg =>
+      .mapAsyncUnordered(5) { msg =>
         val event = PackageAnalyzedEvent.parseFrom(msg.record.value())
         logger.info(s"Processing package metrics for package ${event.packageName}")
         processPackageMetrics(event)

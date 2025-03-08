@@ -26,7 +26,7 @@ import akka.kafka.ProducerMessage
 import akka.NotUsed
 import akka.stream.ActorAttributes
 import org.mongodb.scala.MongoDatabase
-import com.farhankaz.javasight.model.kafka.{ProjectImportedEvent, ScanModuleFileCommand, ScanModuleDirectoryCommand, ModuleFileScannedEvent, FileAnalyzedEvent, PackageAnalyzedEvent, PackageDiscoveryEvent}
+import com.farhankaz.javasight.model.kafka.{ScanModuleFileCommand, ScanModuleDirectoryCommand, ModuleFileScannedEvent, FileAnalyzedEvent, PackageAnalyzedEvent, PackageDiscoveryEvent}
 import spray.json._
 import DefaultJsonProtocol._
 import akka.http.scaladsl.model._
@@ -77,7 +77,7 @@ class PackageAnalysisService(
     fileAnalyzeEventsSource()
       .merge(packageAnalyzeEventsSource())
       .merge(packageDiscoveryEventsSource())
-      .mapAsync(3) { case (msg: ConsumerMessage.CommittableMessage[Array[Byte], Array[Byte]], packageId: String, projectId: String) =>
+      .mapAsyncUnordered(5) { case (msg: ConsumerMessage.CommittableMessage[Array[Byte], Array[Byte]], packageId: String, projectId: String) =>
         logger.debug(s"Received package analyze event for package ${packageId}")
         allChildrenPackagesAndFilesHaveBeenAnalyzed(packageId).map { result =>
           if (!result) {
@@ -93,18 +93,9 @@ class PackageAnalysisService(
       .filter { case (msg, packageId, projectId, result) => result }
       .map { case (msg, packageId, projectId, _) => (msg, packageId, projectId) }
       .mapAsync(1) { case (msg: ConsumerMessage.CommittableMessage[Array[Byte], Array[Byte]], packageId: String, projectId: String) =>
-        redisLock.withLock(s"package-analysis-lock:$packageId") {
-          analyzePackage(packageId, projectId)
-            .map(eventOpt => (eventOpt, msg.committableOffset))
-        }.recover {
-          case ex: RuntimeException if ex.getMessage.contains("Could not acquire lock") =>
-            logger.debug(s"Skipping analysis for package $packageId as it is currently being analyzed")
-            (None, msg.committableOffset)
-          case ex =>
-            logger.error(s"Error during package analysis for $packageId", ex)
-            recordProcessingError()
-            (None, msg.committableOffset)
-        }
+        
+      analyzePackage(packageId, projectId)
+        .map(eventOpt => (eventOpt, msg.committableOffset))
       }
       .collect { case (Some(event: PackageAnalyzedEvent), offset) =>
         (
@@ -253,6 +244,7 @@ class PackageAnalysisService(
   }
 
   private def generatePackageAnalysis(packageId: String, packageName: String, files: Seq[Document], projectContext: Option[String]): Future[String] = {
+    logger.info("Analyzing package: " + packageName)
     val fileAnalyses = files.map { file =>
       s"File: ${file.getString("filePath")}\nAnalysis: ${file.getString("shortAnalysis")}"
     }

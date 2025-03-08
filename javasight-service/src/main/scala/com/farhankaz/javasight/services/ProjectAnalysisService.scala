@@ -95,18 +95,8 @@ class ProjectAnalysisService(
       .filter { case (msg, projectId, result) => result }
       .map { case (msg, projectId, _) => (msg, projectId) }
       .mapAsync(1) { case (msg, projectId) =>
-        redisLock.withLock(s"project-analysis-lock:$projectId") {
-          analyzeProject(projectId)
-            .map(eventOpt => (eventOpt, msg.committableOffset))
-        }.recover {
-          case ex: RuntimeException if ex.getMessage.contains("Could not acquire permit") =>
-            logger.debug(s"Skipping analysis for project $projectId as it is currently being analyzed")
-            (None, msg.committableOffset)
-          case ex =>
-            logger.error(s"Error during project analysis for $projectId", ex)
-            recordProcessingError()
-            (None, msg.committableOffset)
-        }
+        analyzeProject(projectId)
+          .map(eventOpt => (eventOpt, msg.committableOffset))
       }
       .collect { case (Some(event), offset) =>
         (
@@ -242,6 +232,7 @@ class ProjectAnalysisService(
     val moduleAnalyses = modules.map { module =>
       s"Module: ${module.getString("moduleName")}\nAnalysis: ${module.getString("analysis")}"
     }
+    logger.debug("Starting project analysis for " + projectName)
     ollama.analyzeProject(projectName, moduleAnalyses)
   }
   

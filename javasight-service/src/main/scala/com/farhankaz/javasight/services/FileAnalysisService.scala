@@ -25,7 +25,6 @@ import akka.kafka.ProducerMessage
 import akka.NotUsed
 import akka.stream.ActorAttributes
 import org.mongodb.scala.MongoDatabase
-import com.farhankaz.javasight.model.kafka.ProjectImportedEvent
 import com.farhankaz.javasight.model.kafka.ScanModuleFileCommand
 import com.farhankaz.javasight.model.kafka.ScanModuleDirectoryCommand
 import com.farhankaz.javasight.model.kafka.ModuleFileScannedEvent
@@ -129,7 +128,7 @@ class FileAnalysisService(
       .map { msg =>
         (msg, ModuleFileScannedEvent.parseFrom(msg.record.value()))
       }
-      .mapAsync(3) { case (msg, fileEvent) =>
+      .mapAsyncUnordered(5) { case (msg, fileEvent) =>
         logger.trace(s"Received file to analyze: ${fileEvent.filePath} - ${fileEvent.parentPackageId}")
         checkRecentAnalysis(fileEvent.fileId).flatMap { hasRecentAnalysis =>
           if (hasRecentAnalysis) {

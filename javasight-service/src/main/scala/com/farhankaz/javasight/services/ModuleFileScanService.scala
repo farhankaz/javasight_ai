@@ -25,7 +25,6 @@ import akka.kafka.ProducerMessage
 import akka.NotUsed
 import akka.stream.ActorAttributes
 import org.mongodb.scala.MongoDatabase
-import com.farhankaz.javasight.model.kafka.ProjectImportedEvent
 import com.farhankaz.javasight.model.kafka.ScanModuleFileCommand
 import com.farhankaz.javasight.model.kafka.ScanModuleDirectoryCommand
 import com.github.javaparser.StaticJavaParser
@@ -75,19 +74,6 @@ class ModuleFileScanService(
       .mapMaterializedValue(Consumer.DrainingControl.apply[Done])
       .run()
 
-  }
-
-  def findJavaFiles(directory: String): Seq[String] = {
-    val dir = new File(directory)
-    if (dir.exists() && dir.isDirectory) {
-      dir.listFiles()
-        .filter(f => f.isFile && f.getName.endsWith(".java"))
-        .filterNot(f => f.getName.endsWith("Test.java") || f.getPath.contains("test"))
-        .map(_.getAbsolutePath)
-        .toSeq
-    } else {
-      Seq.empty
-    }
   }
 
 

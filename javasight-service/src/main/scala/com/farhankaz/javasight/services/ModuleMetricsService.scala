@@ -39,7 +39,7 @@ class ModuleMetricsService(
   protected override def startService(): Consumer.DrainingControl[Done] = {
     Consumer
       .committableSource(consumerSettings, Subscriptions.topics(kafkaTopic))
-      .mapAsync(1) { msg =>
+      .mapAsyncUnordered(5) { msg =>
         val event = ModuleMetricsEvent.parseFrom(msg.record.value())
         processModuleMetrics(event)
           .map { _ =>

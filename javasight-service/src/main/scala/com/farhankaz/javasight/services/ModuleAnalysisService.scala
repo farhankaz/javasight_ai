@@ -115,31 +115,22 @@ class ModuleAnalysisService(
         }
       }
       .filter { case (moduleId, projectId, _) => moduleId.nonEmpty && projectId.nonEmpty }
-      .mapAsync(1) { case (moduleId, projectId, offset) =>
+      .mapAsyncUnordered(5) { case (moduleId, projectId, offset) =>
         val lockKey = s"module-analysis-lock:$moduleId"
         logger.debug(s"Attempting to acquire lock for module $moduleId")
         
-        redisLock.withLock(lockKey) {
-          logger.debug(s"Starting direct analysis for module $moduleId")
-          analyzeModule(moduleId, projectId)
-            .map { eventOpt =>
-              logger.debug(s"Completed direct analysis for module $moduleId")
-              (eventOpt, offset)
-            }
-            .recover { case ex =>
-              logger.error(s"Direct analysis failed for module $moduleId", ex)
-              recordProcessingError()
-              (None, offset)
-            }
-        }.recover {
-          case ex: RuntimeException if ex.getMessage.contains("Could not acquire lock") =>
-            logger.debug(s"Skipping direct analysis for module $moduleId - lock acquisition failed")
-            (None, offset)
-          case ex =>
-            logger.error(s"Error during direct module analysis for $moduleId", ex)
+        logger.debug(s"Starting direct analysis for module $moduleId")
+        analyzeModule(moduleId, projectId)
+          .map { eventOpt =>
+            logger.debug(s"Completed direct analysis for module $moduleId")
+            (eventOpt, offset)
+          }
+          .recover { case ex =>
+            logger.error(s"Direct analysis failed for module $moduleId", ex)
             recordProcessingError()
             (None, offset)
-        }
+          }
+      
       }
       .collect { case (Some(event), offset) =>
         (
@@ -211,27 +202,17 @@ class ModuleAnalysisService(
         val lockKey = s"module-analysis-lock:$moduleId"
         logger.debug(s"Attempting to acquire lock for module $moduleId")
         
-        redisLock.withLock(lockKey) {
-          logger.debug(s"Starting analysis for module $moduleId")
-          analyzeModule(moduleId, projectId)
-            .map { eventOpt => 
-              logger.debug(s"Completed analysis for module $moduleId")
-              (eventOpt, msg.committableOffset)
-            }
-            .recover { case ex =>
-              logger.error(s"Analysis failed for module $moduleId", ex)
-              recordProcessingError()
-              (None, msg.committableOffset)
-            }
-        }.recover {
-          case ex: RuntimeException if ex.getMessage.contains("Could not acquire lock") =>
-            logger.debug(s"Skipping analysis for module $moduleId - lock acquisition failed")
-            (None, msg.committableOffset)
-          case ex =>
-            logger.error(s"Error during module analysis for $moduleId", ex)
+        logger.debug(s"Starting analysis for module $moduleId")
+        analyzeModule(moduleId, projectId)
+          .map { eventOpt => 
+            logger.debug(s"Completed analysis for module $moduleId")
+            (eventOpt, msg.committableOffset)
+          }
+          .recover { case ex =>
+            logger.error(s"Analysis failed for module $moduleId", ex)
             recordProcessingError()
             (None, msg.committableOffset)
-        }
+          }
       }
       .collect { case (Some(event), offset) =>
         (
@@ -385,6 +366,7 @@ class ModuleAnalysisService(
   }
 
   private def generateModuleAnalysis(moduleId: String, moduleName: String, packages: Seq[Document], projectName: String, projectContext: Option[String]): Future[String] = {
+    logger.debug(s"Starting module analysis for ${moduleName}")
     val packageAnalyses = packages.map { pkg =>
       s"Package: ${pkg.getString("packageName")}\nAnalysis: ${pkg.getString("analysis")}"
     }

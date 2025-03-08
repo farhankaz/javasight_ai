@@ -1,32 +1,44 @@
 package com.farhankaz.javasight.services
 
 import akka.Done
+import akka.NotUsed
 import akka.actor.ActorSystem
-import akka.kafka.scaladsl.{Consumer, Producer}
-import akka.kafka.{ProducerSettings, Subscriptions}
-import akka.stream.scaladsl.{Keep, Sink, Source}
+import akka.kafka.ProducerMessage
+import akka.kafka.ProducerSettings
+import akka.kafka.Subscriptions
+import akka.kafka.scaladsl.Consumer
+import akka.kafka.scaladsl.Producer
+import akka.stream.ActorAttributes
+import akka.stream.scaladsl.Keep
+import akka.stream.scaladsl.Sink
+import akka.stream.scaladsl.Source
+import com.farhankaz.javasight.model.kafka.PackageDiscoveryEvent
+import com.farhankaz.javasight.model.kafka.ScanModuleDirectoryCommand
+import com.farhankaz.javasight.model.kafka.ScanModuleFileCommand
+import com.farhankaz.javasight.model.protobuf.ImportFile
+import com.farhankaz.javasight.model.protobuf.ImportModule
+import com.farhankaz.javasight.utils.ConfigurationLoader
+import com.github.javaparser.StaticJavaParser
+import io.micrometer.core.instrument.MeterRegistry
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.ByteArraySerializer
+import org.bson.types.ObjectId
+import org.mongodb.scala.MongoDatabase
 import org.mongodb.scala.bson.collection.immutable.Document
-import org.mongodb.scala.model.{Filters, InsertOneModel}
+import org.mongodb.scala.model.Filters
+import org.mongodb.scala.model.InsertOneModel
 import org.slf4j.LoggerFactory
 import scalapb.GeneratedMessage
-import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Failure, Success}
+
 import java.io.File
-import java.nio.file.{Files, Paths}
+import java.nio.file.Files
+import java.nio.file.Paths
+import scala.concurrent.ExecutionContext
+import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
-import com.farhankaz.javasight.utils.ConfigurationLoader
-import com.farhankaz.javasight.model.protobuf.{ImportModule, ImportFile}
-import io.micrometer.core.instrument.MeterRegistry
-import org.bson.types.ObjectId
-import akka.kafka.ProducerMessage
-import akka.NotUsed
-import akka.stream.ActorAttributes
-import org.mongodb.scala.MongoDatabase
-import com.farhankaz.javasight.model.kafka.{ProjectImportedEvent, ScanModuleFileCommand, ScanModuleDirectoryCommand, PackageDiscoveryEvent}
-import com.github.javaparser.StaticJavaParser
 import scala.jdk.OptionConverters._
+import scala.util.Failure
+import scala.util.Success
 
 class ModuleDirectoryScanService(
     config: ConfigurationLoader,
@@ -113,7 +125,7 @@ class ModuleDirectoryScanService(
     if (dir.exists() && dir.isDirectory) {
       dir.listFiles()
         .filter(f => f.isFile && f.getName.endsWith(".java"))
-        .filterNot(f => f.getName.endsWith("Test.java") || f.getPath.contains("test"))
+        .filterNot(f => f.getName.toLowerCase.contains("test"))
         .map(_.getAbsolutePath)
         .toSeq
     } else {

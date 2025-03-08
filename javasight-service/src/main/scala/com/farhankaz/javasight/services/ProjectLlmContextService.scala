@@ -68,28 +68,18 @@ class ProjectLlmContextService(
         val event = ProjectAnalyzedEvent.parseFrom(msg.record.value())
         logger.info(s"Received project analyzed event for project ${event.projectId}")
         
-        redisLock.withLock(s"llm-context-generation-lock:${event.projectId}") {
-          generateAndStoreContext(event.projectId)
-            .map { _ =>
-              contextsGenerated.increment()
-              logger.info(s"Generated LLM context for project ${event.projectId}")
-              msg.committableOffset
-            }
-            .recover { case ex =>
-              logger.error(s"Failed to generate LLM context for project ${event.projectId}", ex)
-              contextGenerationFailures.increment()
-              recordProcessingError()
-              msg.committableOffset
-            }
-        }.recover {
-          case ex: RuntimeException if ex.getMessage.contains("Could not acquire lock") =>
-            logger.debug(s"Skipping context generation for project ${event.projectId} as it is currently being processed")
+        generateAndStoreContext(event.projectId)
+          .map { _ =>
+            contextsGenerated.increment()
+            logger.info(s"Generated LLM context for project ${event.projectId}")
             msg.committableOffset
-          case ex =>
-            logger.error(s"Error during context generation for project ${event.projectId}", ex)
+          }
+          .recover { case ex =>
+            logger.error(s"Failed to generate LLM context for project ${event.projectId}", ex)
+            contextGenerationFailures.increment()
             recordProcessingError()
             msg.committableOffset
-        }
+          }
       }
       .groupedWithin(20, 5.seconds)
       .mapAsync(3) { offsets =>
