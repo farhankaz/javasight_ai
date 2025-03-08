@@ -29,6 +29,13 @@ object FileTypeSupport {
         case ".py" => "python"
         case ".cpp" => "cpp"
         case ".hs" => "haskell"
+        case ".properties" => "properties"
+        case ".yaml" => "yaml"
+        case ".yml" => "yaml"
+        case ".xml" => "xml"
+        case ".kt" => "kotlin"
+        case ".groovy" => "groovy"
+        case ".sh" => "shell"
         case _ => "unknown"
       }
     } else {

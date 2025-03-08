@@ -197,7 +197,17 @@ class PackageAnalysisService(
           for {
             files <- getPackageFiles(moduleId, packageName)
             projectContext <- getProjectContext(projectId)
-            analysis <- generatePackageAnalysis(packageId, packageName, files, projectContext)
+            // Determine analysis content based on file count
+            analysis <- {
+              if (files.size <= 1) {
+                // For packages with only a single file, set empty analysis
+                logger.info(s"Package $packageName has only ${files.size} file(s), setting empty analysis")
+                Future.successful("")
+              } else {
+                // For packages with multiple files, perform normal analysis
+                generatePackageAnalysis(packageId, packageName, files, projectContext)
+              }
+            }
             _ <- updatePackageAnalysis(packageId, analysis)
           } yield {
             packagesAnalyzed.increment()

@@ -84,6 +84,7 @@ class ModuleAnalysisService(
   
   private val javaPackagesCollection = database.getCollection[Document]("java_packages")
   private val javaModulesCollection = database.getCollection[Document]("java_modules")
+  private val javaFilesCollection = database.getCollection[Document]("java_files")
   private val projectContextsCollection = database.getCollection[Document]("project_contexts")
   
   val timeoutSettings = ConnectionPoolSettings(system)
@@ -321,7 +322,13 @@ class ModuleAnalysisService(
             projectName <- getProjectName(moduleDoc.getString("projectId"))
             rootPackages <- getRootPackages(moduleId)
             projectContext <- getProjectContext(projectId)
-            analysis <- generateModuleAnalysis(moduleId, moduleDoc.getString("moduleName"), rootPackages, projectName, projectContext)
+            // Determine analysis content based on package count
+            analysis <- {
+
+                // For modules with multiple packages, perform normal analysis
+                generateModuleAnalysis(moduleId, moduleDoc.getString("moduleName"), rootPackages, projectName, projectContext)
+
+            }
             _ <- updateModuleAnalysis(moduleId, analysis)
           } yield {
             modulesAnalyzed.increment()
@@ -367,10 +374,42 @@ class ModuleAnalysisService(
 
   private def generateModuleAnalysis(moduleId: String, moduleName: String, packages: Seq[Document], projectName: String, projectContext: Option[String]): Future[String] = {
     logger.debug(s"Starting module analysis for ${moduleName}")
-    val packageAnalyses = packages.map { pkg =>
-      s"Package: ${pkg.getString("packageName")}\nAnalysis: ${pkg.getString("analysis")}"
+    
+    // Create a sequence of futures, each containing analysis for one package and its files
+    val packageFutures: Seq[Future[String]] = packages.map { pkg =>
+      val packageId = pkg.getObjectId("_id").toString
+      val packageName = pkg.getString("packageName")
+      val packageAnalysis = Option(pkg.getString("analysis")).getOrElse("")
+      
+      // Get all files for this package
+      javaFilesCollection.find(equal("packageId", packageId)).toFuture().map { files =>
+        // Start with the package overview
+        val packageSection = s"Package: ${packageName}\nAnalysis: ${packageAnalysis}"
+        
+        // Add file analyses if any files exist
+        if (files.nonEmpty) {
+          val fileAnalyses = files.map { file =>
+            val filePath = file.getString("filePath")
+            val fileName = filePath.split("/").last
+            val fileAnalysis = Option(file.getString("shortAnalysis")).getOrElse("")
+            s"\n  File: ${fileName}\n  Analysis: ${fileAnalysis}"
+          }.mkString("\n")
+          
+          s"${packageSection}${fileAnalyses}"
+        } else {
+          packageSection
+        }
+      }
     }
-    ollama.analyzeModule(moduleName, projectName, packageAnalyses, projectContext)
+    
+    // Combine all the futures into one future containing all package analyses
+    val packageAnalysesFuture: Future[Seq[String]] = Future.sequence(packageFutures)
+    
+    // Once all package analyses with their files are collected, analyze the module
+    packageAnalysesFuture.flatMap { packageAnalyses =>
+      logger.debug(s"Collected analyses for ${packageAnalyses.size} packages with their files for module ${moduleName}")
+      ollama.analyzeModule(moduleName, projectName, packageAnalyses, projectContext)
+    }
   }
   
   /**

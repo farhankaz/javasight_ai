@@ -50,32 +50,32 @@ class BedrockAnalyzer(config: ConfigurationLoader, metricsRegistry: MeterRegistr
     temperature: Float = 0.7f
   ): Future[String] = {
     try {
-      // analysisRequests.increment()
+      analysisRequests.increment()
 
-      // val message = Message.builder()
-      //   .content(ContentBlock.fromText(userPrompt))
-      //   .role(ConversationRole.USER)
-      //   .build()
+      val message = Message.builder()
+        .content(ContentBlock.fromText(userPrompt))
+        .role(ConversationRole.USER)
+        .build()
 
-      // val systemMessage = Message.builder()
-      //   .content(ContentBlock.fromText(systemPrompt))
-      //   .role(ConversationRole.USER)
-      //   .build()
+      val systemMessage = Message.builder()
+        .content(ContentBlock.fromText(systemPrompt))
+        .role(ConversationRole.USER)
+        .build()
 
-      // val response = client.converse { request =>
-      //   request
-      //     .modelId(modelId)
-      //     .messages(systemMessage, message)
-      //     .inferenceConfig { config =>
-      //       config
-      //         .maxTokens(maxTokens)
-      //         .temperature(temperature)
-      //         .topP(0.9F)
-      //     }
-      // }
+      val response = client.converse { request =>
+        request
+          .modelId(modelId)
+          .messages(systemMessage, message)
+          .inferenceConfig { config =>
+            config
+              .maxTokens(maxTokens)
+              .temperature(temperature)
+              .topP(0.9F)
+          }
+      }
       
-      // Future.successful(response.output().message().content().get(0).text())
-      Future.successful("dummy response")
+      Future.successful(response.output().message().content().get(0).text())
+      // Future.successful("dummy response")
     } catch {
       case e: Exception =>
         analysisFailures.increment()
