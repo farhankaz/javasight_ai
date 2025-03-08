@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, use } from 'react';
-import { DocumentDuplicateIcon, CodeBracketIcon, FolderIcon } from '@heroicons/react/24/outline';
+import { DocumentDuplicateIcon, CodeBracketIcon, FolderIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import ReactMarkdown from 'react-markdown';
 import Breadcrumb from '@/app/components/Breadcrumb';
 
@@ -81,38 +81,37 @@ export default function PackageDetailsPage({
             <div className="prose prose-sm max-w-none mb-6">
               <ReactMarkdown>{packageDetails.description}</ReactMarkdown>
             </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center gap-2">
-                <DocumentDuplicateIcon className="h-5 w-5 text-gray-500" />
-                <span className="text-gray-600">{packageDetails.fileCount} files</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CodeBracketIcon className="h-5 w-5 text-gray-500" />
-                <span className="text-gray-600">{packageDetails.linesOfCode} lines of code</span>
-              </div>
-            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-white rounded-lg p-6 shadow-sm">
-              <DocumentDuplicateIcon className="h-5 w-5 text-gray-500" />
-              <h3 className="text-sm font-medium text-gray-500">Files</h3>
+              <div className="flex items-center gap-1">
+                <DocumentDuplicateIcon className="h-5 w-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-500">Files</h3>
+              </div>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{packageDetails.metrics?.fileCount.toLocaleString() || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-6 shadow-sm">
-              <CodeBracketIcon className="h-5 w-5 text-gray-500" />
-              <h3 className="text-sm font-medium text-gray-500">Lines of Code</h3>
+              <div className="flex items-center gap-1">
+                <CodeBracketIcon className="h-5 w-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-500">Lines of Code</h3>
+              </div>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{packageDetails.metrics?.linesOfCode.toLocaleString() || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-6 shadow-sm">
-              <h3 className="text-sm font-medium text-gray-500">Analysis Tokens</h3>
+              <div className="flex items-center gap-1">
+                <SparklesIcon className="h-5 w-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-500">Analysis Tokens</h3>
+              </div>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{packageDetails.metrics?.combinedAnalysisTokenCount?.toLocaleString() || 0}</p>
             </div>
             <div className="bg-white rounded-lg p-6 shadow-sm">
-              <h3 className="text-sm font-medium text-gray-500">Code Tokens</h3>
+              <div className="flex items-center gap-1">
+                <SparklesIcon className="h-5 w-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-500">Code Tokens</h3>
+              </div>
               <p className="mt-2 text-3xl font-bold text-indigo-600">{packageDetails.metrics?.codeTokenCount?.toLocaleString() || 0}</p>
-            </div>                        
+            </div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm p-6">

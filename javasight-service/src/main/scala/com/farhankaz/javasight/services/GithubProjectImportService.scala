@@ -231,12 +231,20 @@ class GithubProjectImportService(
   }
 
   private def createProjectRecords(
-    projectId: ObjectId, 
-    command: ImportGithubProjectCommand, 
+    projectId: ObjectId,
+    command: ImportGithubProjectCommand,
     clonePath: String,
     importId: ObjectId
   ): Future[Unit] = {
     updateImportStatus(importId, "in_progress", "Importing project...", 70)
+    
+    // Check for README.md content
+    val readmeContent = readReadmeFile(clonePath)
+    readmeContent.foreach(content =>
+      logger.info(s"Found README.md in ${command.projectName}, using its content for project context"))
+    
+    // Use README.md content if available, otherwise fall back to command.projectContext
+    val projectContext = readmeContent.getOrElse(command.projectContext)
     
     // Create a Future sequence of both insert operations
     Future.sequence(Seq(
@@ -249,7 +257,7 @@ class GithubProjectImportService(
       
       projectContexts.insertOne(Document(
         "projectId" -> projectId.toHexString,
-        "context" -> command.projectContext
+        "context" -> projectContext
       )).toFuture()
     )).map { _ =>
       projectsImportedCounter.increment()
@@ -290,6 +298,22 @@ class GithubProjectImportService(
       )
       .toFuture()
       .map(_ => ())
+  }
+
+  // Helper method to read README.md content from project root
+  private def readReadmeFile(projectPath: String): Option[String] = {
+    val readmePath = Paths.get(projectPath, "README.md")
+    if (Files.exists(readmePath)) {
+      try {
+        Some(new String(Files.readAllBytes(readmePath), "UTF-8"))
+      } catch {
+        case ex: Exception =>
+          logger.warn(s"Failed to read README.md: ${ex.getMessage}", ex)
+          None
+      }
+    } else {
+      None
+    }
   }
 
   private def parseProjectModules(projectId: String, projectLocation: String): Seq[Module] = {
