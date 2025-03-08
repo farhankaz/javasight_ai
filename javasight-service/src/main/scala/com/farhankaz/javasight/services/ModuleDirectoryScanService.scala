@@ -18,6 +18,7 @@ import com.farhankaz.javasight.model.kafka.ScanModuleFileCommand
 import com.farhankaz.javasight.model.protobuf.ImportFile
 import com.farhankaz.javasight.model.protobuf.ImportModule
 import com.farhankaz.javasight.utils.ConfigurationLoader
+import com.farhankaz.javasight.utils.FileTypeSupport
 import com.github.javaparser.StaticJavaParser
 import io.micrometer.core.instrument.MeterRegistry
 import org.apache.kafka.clients.producer.ProducerRecord
@@ -65,9 +66,9 @@ class ModuleDirectoryScanService(
       }
       .map { msg =>
         logger.trace(s"Scanning module directory: ${msg.path}")
-        val javaFiles = findJavaFiles(msg.path)
-        logger.trace(s"Found ${javaFiles.size} java files in ${msg.path}")
-        (msg, javaFiles
+        val sourceFiles = findSourceFiles(msg.path)
+        logger.trace(s"Found ${sourceFiles.size} source files in ${msg.path}")
+        (msg, sourceFiles
           .headOption
           .flatMap(extractPackageName))
       }
@@ -75,7 +76,7 @@ class ModuleDirectoryScanService(
         case (msg, Some(packageName)) => {
           // Insert package document if package name exists
           val packageId = new ObjectId()
-          val childDirs = findChildJavaDirectories(msg.path).size
+          val childDirs = findChildSourceDirectories(msg.path).size
           logger.info(s"Found child directories: ${childDirs} for ${packageName}")
           val packageDoc = Document(
              "_id" -> packageId,
@@ -91,7 +92,7 @@ class ModuleDirectoryScanService(
             _ <- packagesCollection.insertOne(packageDoc).toFuture()
             _ = packagesInserted.increment()
             _ = logger.trace(s"Found new package ${packageName} with id ${packageId} for module ${msg.moduleId}")
-            baseMessages = javaFileMessages(msg, packageId.toString()) ++ createScanDirectoryMessages(msg, Some(packageId.toString()))
+            baseMessages = sourceFileMessages(msg, packageId.toString()) ++ createScanDirectoryMessages(msg, Some(packageId.toString()))
             discoveryMessages <- msg.parentPackageId match {
               case Some(parentId) => {
                 logger.info(s"Telling parent ${parentId} package that I (${packageId}) am done.")
@@ -120,12 +121,11 @@ class ModuleDirectoryScanService(
       .mapMaterializedValue(Consumer.DrainingControl.apply[Done])
       .run()
 
-  def findJavaFiles(directory: String): Seq[String] = {
+  def findSourceFiles(directory: String): Seq[String] = {
     val dir = new File(directory)
     if (dir.exists() && dir.isDirectory) {
       dir.listFiles()
-        .filter(f => f.isFile && f.getName.endsWith(".java"))
-        .filterNot(f => f.getName.toLowerCase.contains("test"))
+        .filter(f => f.isFile && FileTypeSupport.isValidSourceFile(f.getAbsolutePath))
         .map(_.getAbsolutePath)
         .toSeq
     } else {
@@ -133,24 +133,22 @@ class ModuleDirectoryScanService(
     }
   }
 
-  def hasJavaFiles(d: File): Boolean = {
+  def hasSourceFiles(d: File): Boolean = {
     if (d.isDirectory) {
       d.listFiles().exists(f =>
-        (f.isFile && f.getName.endsWith(".java") &&
-          !f.getName.endsWith("Test.java") &&
-          !f.getPath.contains("test") && !f.getPath().contains("target")) ||
-        (f.isDirectory && hasJavaFiles(f))
+        (f.isFile && FileTypeSupport.isValidSourceFile(f.getAbsolutePath)) ||
+        (f.isDirectory && hasSourceFiles(f))
       )
     } else false
   }
 
-  def findChildJavaDirectories(directory: String): Seq[File] = {
+  def findChildSourceDirectories(directory: String): Seq[File] = {
     val dir = new File(directory)
     if (dir.exists() && dir.isDirectory) {
       dir.listFiles()
         .filter(_.isDirectory)
         .filter { childDir =>
-          hasJavaFiles(childDir)
+          hasSourceFiles(childDir)
         }
         .toSeq
     } else {
@@ -160,24 +158,38 @@ class ModuleDirectoryScanService(
 
 
   def extractPackageName(filePath: String): Option[String] = {
-    val fileContent = new String(Files.readAllBytes(Paths.get(filePath)))
-    val parserConfiguration = new com.github.javaparser.ParserConfiguration()
-      .setLanguageLevel(com.github.javaparser.ParserConfiguration.LanguageLevel.BLEEDING_EDGE)
-    val javaParser = new com.github.javaparser.JavaParser(parserConfiguration)
-    val compilationUnit = javaParser.parse(fileContent).getResult.orElseThrow()
-    
-    compilationUnit.getPackageDeclaration.map(_.getNameAsString).toScala
+    if (filePath.endsWith(".java")) {
+      // Existing Java package extraction logic
+      try {
+        val fileContent = new String(Files.readAllBytes(Paths.get(filePath)))
+        val parserConfiguration = new com.github.javaparser.ParserConfiguration()
+          .setLanguageLevel(com.github.javaparser.ParserConfiguration.LanguageLevel.BLEEDING_EDGE)
+        val javaParser = new com.github.javaparser.JavaParser(parserConfiguration)
+        val compilationUnit = javaParser.parse(fileContent).getResult.orElseThrow()
+        
+        compilationUnit.getPackageDeclaration.map(_.getNameAsString).toScala
+      } catch {
+        case e: Exception => 
+          logger.warn(s"Failed to extract package from Java file: $filePath", e)
+          Some(FileTypeSupport.getDirectoryAsPackage(filePath))
+      }
+    } else {
+      // For non-Java files, use directory name as package
+      Some(FileTypeSupport.getDirectoryAsPackage(filePath))
+    }
   }
 
-  def javaFileMessages(msg: ScanModuleDirectoryCommand, packageId: String): Seq[ProducerRecord[Array[Byte],Array[Byte]]] = {
-    findJavaFiles(msg.path).map { filePath =>
+  def sourceFileMessages(msg: ScanModuleDirectoryCommand, packageId: String): Seq[ProducerRecord[Array[Byte],Array[Byte]]] = {
+    findSourceFiles(msg.path).map { filePath =>
+      val fileType = FileTypeSupport.getFileType(filePath)
       new ProducerRecord[Array[Byte], Array[Byte]](
         KafkaTopics.ScanModuleFileCommands.toString(),
         ScanModuleFileCommand(
           filePath = filePath,
           moduleId = msg.moduleId,
           projectId = msg.projectId,
-          parentPackageId = Some(packageId)
+          parentPackageId = Some(packageId),
+          fileType = Some(fileType)
         ).toByteArray
       )
     }
@@ -210,7 +222,7 @@ class ModuleDirectoryScanService(
   }
 
   def createScanDirectoryMessages(msg: ScanModuleDirectoryCommand, parentPackageId: Option[String]): Seq[ProducerRecord[Array[Byte],Array[Byte]]] = {
-    findChildJavaDirectories(msg.path)
+    findChildSourceDirectories(msg.path)
       .map { dir =>
         logger.info(s"Creating scan directory message for child ${dir.getAbsolutePath}")
         new ProducerRecord[Array[Byte], Array[Byte]](

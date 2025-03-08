@@ -46,6 +46,7 @@ message ScanModuleFileCommand {
   optional string parent_package_id = 4; 
   string file_path = 5;
   int64 timestamp = 6;
+  optional string file_type = 7;
 }
 
 message AnalyzeFileCommand {
@@ -110,6 +111,7 @@ message ModuleFileScannedEvent {
   string file_path = 4;
   string file_id = 5;
   int64 timestamp = 6;
+  optional string file_type = 7;
 }
 
 message FileAnalyzedEvent {

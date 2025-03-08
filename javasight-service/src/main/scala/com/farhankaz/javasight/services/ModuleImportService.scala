@@ -17,6 +17,7 @@ import java.io.File
 import java.nio.file.{Files, Paths}
 import scala.jdk.CollectionConverters._
 import com.farhankaz.javasight.utils.ConfigurationLoader
+import com.farhankaz.javasight.utils.FileTypeSupport
 import com.farhankaz.javasight.model.protobuf.{ImportModule, ImportFile}
 import io.micrometer.core.instrument.MeterRegistry
 import org.bson.types.ObjectId
@@ -42,6 +43,32 @@ class ModuleImportService(
 
   private val modulesImportedCounter = metricsRegistry.counter(s"${config.env}_javasight_importmodule_modules_imported")
   private val moduleCollection = database.getCollection[Document]("java_modules")
+  
+  /**
+   * Check if a module directory contains any valid supported files
+   * (files with supported extensions and not filtered out)
+   *
+   * @param modulePath Path to the module directory
+   * @return true if the module contains at least one valid source file, false otherwise
+   */
+  private def moduleContainsSupportedFiles(modulePath: String): Boolean = {
+    def scanDirectory(dir: File): Boolean = {
+      val files = dir.listFiles()
+      if (files == null) return false
+      
+      // Check if any file in the current directory is a valid source file
+      val hasSupportedFile = files.exists(file =>
+        file.isFile && FileTypeSupport.isValidSourceFile(file.getAbsolutePath)
+      )
+      
+      // If found valid source file, return true, otherwise search subdirectories
+      hasSupportedFile || files.filter(_.isDirectory)
+                             .exists(scanDirectory)
+    }
+    
+    val moduleDir = new File(modulePath)
+    scanDirectory(moduleDir)
+  }
 
   protected override def startService(): Consumer.DrainingControl[Done] = {
     Consumer
@@ -50,7 +77,14 @@ class ModuleImportService(
         ProjectImportedEvent.parseFrom(msg.record.value())
       }
       .mapConcat(msg => msg.modules.map(module => (module, msg)))
-      .mapAsync(1) { case (module, msg) => 
+      .filter { case (module, _) =>
+        val containsSupportedFiles = moduleContainsSupportedFiles(module.location)
+        if (!containsSupportedFiles) {
+          logger.info(s"Skipping module ${module.name} at ${module.location} as it doesn't contain any supported files")
+        }
+        containsSupportedFiles
+      }
+      .mapAsync(1) { case (module, msg) =>
         val moduleId = ObjectId.get()
         modulesImportedCounter.increment()
         logger.info(s"Successfully imported module ${module.name} from ${module.location}")
