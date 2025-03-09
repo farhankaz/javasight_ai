@@ -28,7 +28,7 @@ export async function GET(
     const db = client.db('javasight');
 
     // Get package details
-    const packageDetails = await db.collection('java_packages').findOne(
+    const packageDetails = await db.collection('packages').findOne(
       { _id: new ObjectId(packageId) }
     );
 
@@ -37,7 +37,7 @@ export async function GET(
     }
 
     // Get all files in the package
-    const files = await db.collection('java_files')
+    const files = await db.collection('files')
       .find({
         packageId: packageId
       })
@@ -54,7 +54,7 @@ export async function GET(
     // Try to get package metrics
     let packageMetrics: { fileCount?: number; linesOfCode?: number, combinedAnalysisTokenCount?: number, codeTokenCount?: number } = {};
     try {
-      const metricsDoc = await db.collection('java_packages_metrics').findOne(
+      const metricsDoc = await db.collection('packages_metrics').findOne(
         { packageId: packageId }
       );
       console.log('Package Metrics:', metricsDoc);

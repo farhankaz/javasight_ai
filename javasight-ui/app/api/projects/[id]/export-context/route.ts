@@ -41,7 +41,7 @@ export async function GET(
     console.warn(`No pre-generated context found for project ${id}, generating on the fly`);
     
     // Fetch modules for this project
-    const modules = await db.collection('java_modules')
+    const modules = await db.collection('modules')
       .find({ projectId: id })
       .toArray();
     
@@ -56,7 +56,7 @@ export async function GET(
       markdownContent += `${module.analysis || 'No analysis available'}\n\n`;
       
       // Fetch packages for this module
-      const packages = await db.collection('java_packages')
+      const packages = await db.collection('packages')
         .find({ module_id: module._id.toString() })
         .toArray();
       
@@ -65,7 +65,7 @@ export async function GET(
         markdownContent += `${pkg.analysis || 'No analysis available'}\n\n`;
         
         // Fetch files for this package
-        const files = await db.collection('java_files')
+        const files = await db.collection('files')
           .find({ packageId: pkg._id.toString() })
           .toArray();
         

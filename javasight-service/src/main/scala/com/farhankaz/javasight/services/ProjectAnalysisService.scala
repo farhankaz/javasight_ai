@@ -71,7 +71,7 @@ class ProjectAnalysisService(
     Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env, "usage_type", "project_analysis")
   )
   
-  private val javaModulesCollection = database.getCollection[Document]("java_modules")
+  private val javaModulesCollection = database.getCollection[Document]("modules")
   private val javaProjectsCollection = database.getCollection[Document]("projects")
   private val importStatusCollection = database.getCollection[Document]("project_import_status")
   

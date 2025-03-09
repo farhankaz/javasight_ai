@@ -82,9 +82,9 @@ class ModuleAnalysisService(
     Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env, "usage_type", "module_analysis")
   )
   
-  private val javaPackagesCollection = database.getCollection[Document]("java_packages")
-  private val javaModulesCollection = database.getCollection[Document]("java_modules")
-  private val javaFilesCollection = database.getCollection[Document]("java_files")
+  private val javaPackagesCollection = database.getCollection[Document]("packages")
+  private val javaModulesCollection = database.getCollection[Document]("modules")
+  private val javaFilesCollection = database.getCollection[Document]("files")
   private val projectContextsCollection = database.getCollection[Document]("project_contexts")
   
   val timeoutSettings = ConnectionPoolSettings(system)
@@ -143,7 +143,7 @@ class ModuleAnalysisService(
         )
       }
       .groupedWithin(10, 3.seconds)
-      .mapAsync(3) { messages =>
+      .mapAsyncUnordered(3) { messages =>
         val (records, offsets) = messages.unzip
         Source(records)
           .runWith(producerSink)
@@ -152,7 +152,7 @@ class ModuleAnalysisService(
             offsets
           }
       }
-      .mapAsync(3) { offsets =>
+      .mapAsyncUnordered(3) { offsets =>
         offsets
           .foldLeft(ConsumerMessage.CommittableOffsetBatch.empty)(_.updated(_))
           .commitScaladsl()
@@ -184,7 +184,7 @@ class ModuleAnalysisService(
     val producerSink = Producer.plainSink(producerSettings)
 
     packageAnalyzedEventsSource()
-      .mapAsync(1) { case (msg, moduleId, projectId) =>
+      .mapAsyncUnordered(1) { case (msg, moduleId, projectId) =>
         logger.debug(s"Processing package analyzed event for module ${moduleId}")
         allRootPackagesAnalyzed(moduleId).map { result =>
           if (!result) {
@@ -199,7 +199,7 @@ class ModuleAnalysisService(
       }
       .filter { case (msg, moduleId, projectId, result) => result }
       .map { case (msg, moduleId, projectId, _) => (msg, moduleId, projectId) }
-      .mapAsync(1) { case (msg, moduleId, projectId) =>
+      .mapAsyncUnordered(5) { case (msg, moduleId, projectId) =>
         val lockKey = s"module-analysis-lock:$moduleId"
         logger.debug(s"Attempting to acquire lock for module $moduleId")
         

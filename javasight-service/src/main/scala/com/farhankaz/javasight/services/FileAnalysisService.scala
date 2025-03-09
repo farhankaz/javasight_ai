@@ -92,7 +92,7 @@ class FileAnalysisService(
     Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env, "usage_type", "analysis")
   )
 
-  private val javaFilesCollection = database.getCollection[Document]("java_files")
+  private val javaFilesCollection = database.getCollection[Document]("files")
   private val projectContextCollection = database.getCollection[Document]("project_context")
 
   private def getProjectContext(projectId: String): Future[Option[String]] = {

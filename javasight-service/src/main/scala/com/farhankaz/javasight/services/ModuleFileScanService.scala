@@ -60,7 +60,7 @@ class ModuleFileScanService(
     ) {
 
   private val filesProcessed = metricsRegistry.counter(s"${config.env}_javasight_importmodule_files_processed")
-  private val javaFilesCollection = database.getCollection[Document]("java_files")
+  private val javaFilesCollection = database.getCollection[Document]("files")
 
   protected override def startService(): Consumer.DrainingControl[Done] = {
     Consumer

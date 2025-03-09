@@ -66,8 +66,8 @@ class PackageAnalysisService(
     "javasight_token_usage_total",
     Tags.of("service_name", getClass.getSimpleName.stripSuffix("$"), "env", config.env, "usage_type", "package_analysis")
   )
-  private val javaPackagesCollection = database.getCollection[Document]("java_packages")
-  private val javaFilesCollection = database.getCollection[Document]("java_files")
+  private val javaPackagesCollection = database.getCollection[Document]("packages")
+  private val javaFilesCollection = database.getCollection[Document]("files")
   private val projectContextsCollection = database.getCollection[Document]("project_contexts")
   
 

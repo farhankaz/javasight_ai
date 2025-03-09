@@ -42,7 +42,7 @@ class ModuleImportService(
     ) {
 
   private val modulesImportedCounter = metricsRegistry.counter(s"${config.env}_javasight_importmodule_modules_imported")
-  private val moduleCollection = database.getCollection[Document]("java_modules")
+  private val moduleCollection = database.getCollection[Document]("modules")
   
   /**
    * Check if a module directory contains any valid supported files

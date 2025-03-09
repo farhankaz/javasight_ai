@@ -249,11 +249,11 @@ message ModuleFileScannedEvent {
 
 We have two options:
 
-1. **Keep existing collection names** (`java_files`, `java_packages`, etc.) but add a `fileType` field to distinguish between different languages.
+1. **Keep existing collection names** (`files`, `packages`, etc.) but add a `fileType` field to distinguish between different languages.
 
 2. **Rename collections** to be more generic:
-   - `java_files` → `source_files`
-   - `java_packages` → `code_packages`
+   - `files` → `source_files`
+   - `packages` → `code_packages`
 
 For simplicity, we recommend option 1 - keeping the existing collection names but adding the `fileType` field. This minimizes changes to other parts of the system that might be querying these collections.
 

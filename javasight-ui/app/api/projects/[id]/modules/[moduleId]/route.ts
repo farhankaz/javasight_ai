@@ -13,7 +13,7 @@ export async function GET(
     const client = await clientPromise;
     const db = client.db('javasight');
 
-    const moduleAndPackages = await db.collection('java_modules').aggregate([
+    const moduleAndPackages = await db.collection('modules').aggregate([
       {
         $match: {
           _id: new ObjectId(moduleId)
@@ -26,7 +26,7 @@ export async function GET(
       },
       {
         $lookup: {
-          from: 'java_packages',
+          from: 'packages',
           localField: 'id',
           foreignField: 'module_id',
           as: 'packages'
@@ -34,7 +34,7 @@ export async function GET(
       },
       {
         $lookup: {
-          from: 'java_modules_metrics',
+          from: 'modules_metrics',
           localField: 'id',
           foreignField: 'moduleId',
           as: 'metrics'
@@ -53,7 +53,7 @@ export async function GET(
       },
       {
         $lookup: {
-          from: 'java_packages_metrics',
+          from: 'packages_metrics',
           let: { packageId: { $toString: "$packages._id" } },
           pipeline: [
             {

@@ -25,19 +25,19 @@ export async function GET(
     }
 
     // Get project metrics - use the most recent metrics
-    const projectMetrics = await db.collection('java_projects_metrics')
+    const projectMetrics = await db.collection('projects_metrics')
       .findOne(
         { projectId: id },
         { sort: { timestamp: -1 } }
       );
 
     // Get modules
-    const modules = await db.collection('java_modules')
+    const modules = await db.collection('modules')
       .find({ projectId: id })
       .toArray();
 
     // Get module metrics - get the most recent metrics for each module
-    const moduleMetrics = await db.collection('java_modules_metrics')
+    const moduleMetrics = await db.collection('modules_metrics')
       .find({ projectId: id })
       .sort({ timestamp: -1 })
       .toArray();

@@ -55,9 +55,9 @@ class ProjectLlmContextService(
 
   private val projectContextCollection = database.getCollection[Document]("project_llm_contexts")
   private val javaProjectsCollection = database.getCollection[Document]("projects")
-  private val javaModulesCollection = database.getCollection[Document]("java_modules")
-  private val javaPackagesCollection = database.getCollection[Document]("java_packages")
-  private val javaFilesCollection = database.getCollection[Document]("java_files")
+  private val javaModulesCollection = database.getCollection[Document]("modules")
+  private val javaPackagesCollection = database.getCollection[Document]("packages")
+  private val javaFilesCollection = database.getCollection[Document]("files")
   
   private val producer = SendProducer(producerSettings)
   

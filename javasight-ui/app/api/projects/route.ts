@@ -48,7 +48,7 @@ export async function GET() {
       },
       {
         $lookup: {
-          from: 'java_projects_metrics',
+          from: 'projects_metrics',
           localField: 'projectIdString',
           foreignField: 'projectId',
           as: 'metrics'

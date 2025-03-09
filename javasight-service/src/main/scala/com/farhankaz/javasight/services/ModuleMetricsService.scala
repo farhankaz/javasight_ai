@@ -32,9 +32,9 @@ class ModuleMetricsService(
 
   private val metricsCalculated = metricsRegistry.counter(s"${config.env}_javasight_module_metrics_calculated")
   private val metricsFailures = metricsRegistry.counter(s"${config.env}_javasight_module_metrics_failures")
-  private val metricsCollection = database.getCollection("java_modules_metrics")
-  private val packageMetricsCollection = database.getCollection("java_packages_metrics")
-  private val modulesCollection = database.getCollection("java_modules")
+  private val metricsCollection = database.getCollection("modules_metrics")
+  private val packageMetricsCollection = database.getCollection("packages_metrics")
+  private val modulesCollection = database.getCollection("modules")
 
   protected override def startService(): Consumer.DrainingControl[Done] = {
     Consumer

@@ -56,7 +56,7 @@ class ModuleDirectoryScanService(
   protected override val logger = LoggerFactory.getLogger(getClass)
 
   private val packagesInserted = metricsRegistry.counter(s"${config.env}_javasight_packages_inserted")
-  private val packagesCollection = database.getCollection[Document]("java_packages")
+  private val packagesCollection = database.getCollection[Document]("packages")
 
   override def startService(): Consumer.DrainingControl[Done] =
     Consumer
